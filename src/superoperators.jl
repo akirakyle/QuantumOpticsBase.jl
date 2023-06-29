@@ -316,3 +316,40 @@ end
         }
     throw(IncompatibleBases())
 end
+
+# TODO: document why we have super_to_choi return non-trace one density matrices.
+# Note the similarity to permutesystems in operators_dense.jl
+function super_choi_helper(data::Matrix, (l1, l2), (r1, r2))
+    # the reshape swaps within systems due to colum major ordering
+    # https://docs.qojulia.org/quantumobjects/operators/#tensor_order
+    # https://forest-benchmarking.readthedocs.io/en/latest/superoperator_representations.html
+    data = reshape(data, map(length, (l2, l1, r2, r1)))
+    (l1, l2), (r1, r2) = (r2, l2), (r1, l1)
+    data = permutedims(data, (1, 3, 2, 4))
+    data = reshape(data, map(length, (l1⊗l2, r1⊗r2)))
+    return data, (l1, l2), (r1, r2)
+end
+
+function super_choi_helper(data::SparseMatrixCSC, (r2, l2), (r1, l1))
+    data = _permutedims(data, map(length, (l2, r2, l1, r1)), (1, 3, 2, 4))
+    data = reshape(data, map(length, (l1⊗l2, r1⊗r2)))
+    # sparse(data) is necessary since reshape of a sparse array returns a
+    # ReshapedSparseArray which is not a subtype of AbstractArray and so
+    # _permutedims fails to acces the ".m" field
+    # https://github.com/qojulia/QuantumOpticsBase.jl/pull/83
+    # https://github.com/JuliaSparse/SparseArrays.jl/issues/24
+    # permutedims in SparseArrays.jl only implements perm (2,1) and so
+    # _permutedims should be upstreamed
+    # https://github.com/JuliaLang/julia/issues/26534
+    return sparse(data), (l1, l2), (r1, r2)
+end
+
+function super_to_choi(op::SuperOperator)::Operator
+    data, basis_l, basis_r = super_choi_helper(op.data, op.basis_l, op.basis_r)
+    return Operator(tensor(basis_l...), tensor(basis_r...), data)
+end
+
+function choi_to_super(op::Operator)::SuperOperator
+    data, basis_l, basis_r = super_choi_helper(op.data, op.basis_l.bases, op.basis_r.bases)
+    SuperOperator(basis_l, basis_r, data)
+end
