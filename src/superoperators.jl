@@ -318,6 +318,9 @@ end
     throw(IncompatibleBases())
 end
 
+# TODO: document why we have super_to_choi return non-trace one density matrices.
+# Note the similarity to permutesystems in operators_dense.jl
+
 """
     ChoiState <: AbstractSuperOperator
 
