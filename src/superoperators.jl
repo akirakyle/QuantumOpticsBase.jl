@@ -318,6 +318,59 @@ end
     throw(IncompatibleBases())
 end
 
+# TODO should all of PauliTransferMatrix, ChiMatrix, ChoiState, and KrausOperators subclass AbstractSuperOperator?
+"""
+    KrausOperators(B1, B2, data)
+
+Superoperator represented as a list of Kraus operators.
+Note unlike the SuperOperator or ChoiState types where
+its possible to have basis_l[1] != basis_l[2] and basis_r[1] != basis_r[2]
+which allows representations of maps between general linear operators defined on H_A \to H_B,
+a quantum channel can only act on valid density operators which live in H_A \to H_A.
+Thus the Kraus representation is only defined for quantum channels which map
+(H_A \to H_A) \to (H_B \to H_B).
+    """
+mutable struct KrausOperators{B1,B2,T} <: AbstractSuperOperator{B1,B2}
+    basis_l::B1
+    basis_r::B2
+    data::T
+    function KrausOperators{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
+        if (any(!samebases(basis_r, M.basis_r) for M in data) ||
+            any(!samebases(basis_l, M.basis_l) for M in data))
+            throw(DimensionMismatch("Tried to assign data with incompatible bases"))
+        end
+
+        new(basis_l, basis_r, data)
+    end
+end
+KrausOperators{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
+KrausOperators(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
+KrausOperators(b,data) = KrausOperators(b,b,data)
+tensor(a::KrausOperators, b::KrausOperators) =
+    KrausOperators(a.basis_l ⊗ b.basis_l, a.basis_r ⊗ b.basis_r,
+                   [A ⊗ B for A in a.data for B in b.data])
+dagger(a::KrausOperators) = KrausOperators(a.basis_r, a.basis_l, [dagger(op) for op in a.data])
+*(a::KrausOperators{B1,B2}, b::KrausOperators{B2,B3}) where {B1,B2,B3} =
+    KrausOperators(a.basis_l, b.basis_r, [A*B for A in a.data for B in b.data])
+*(a::KrausOperators, b::KrausOperators) = throw(IncompatibleBases())
+*(a::KrausOperators{BL,BR}, b::Operator{BR,BR}) where {BL,BR} =
+    sum(op*b*dagger(op) for op in a.data)
+
+function minimize_kraus_rank(kraus; tol=1e-9)
+    bl, br = kraus.basis_l, kraus.basis_r
+    dim = length(bl)*length(br)
+
+    A = stack(reshape(op.data, dim) for op in kraus.data; dims=1)
+    F = qr(A; tol=tol)
+    rank = maximum(findnz(F.R)[1]) # rank(F) doesn't work but should
+    #@assert (F.R ≈ (sparse(F.Q') * A[F.prow,F.pcol])[1:dim,:])
+    #@assert (all(iszero(F.R[rank+1:end,:])))
+
+    ops = [Operator(bl, br, copy(reshape( # copy materializes reshaped view
+        F.R[i,invperm(F.pcol)], (length(bl), length(br))))) for i=1:rank]
+    return KrausOperators(bl, br, ops)
+end
+
 """
     ChoiState <: AbstractSuperOperator
 
@@ -376,3 +429,63 @@ SuperOperator(op::ChoiState) = SuperOperator(_super_choi(op.basis_l, op.basis_r,
 *(a::ChoiState, b::SuperOperator) = SuperOperator(a)*b
 *(a::SuperOperator, b::ChoiState) = a*SuperOperator(b)
 
+SuperOperator(kraus::KrausOperators) =
+    SuperOperator((kraus.basis_l, kraus.basis_l), (kraus.basis_r, kraus.basis_r),
+                  (sum(conj(op)⊗op for op in kraus.data)).data)
+
+ChoiState(kraus::KrausOperators; tol=1e-9) =
+    ChoiState((kraus.basis_r, kraus.basis_l), (kraus.basis_r, kraus.basis_l),
+              (sum((M=op.data; reshape(M, (length(M), 1))*reshape(M, (1, length(M))))
+                   for op in kraus.data)); tol=tol)
+
+function KrausOperators(choi::ChoiState; tol=1e-9)
+    if (!samebases(choi.basis_l[1], choi.basis_r[1]) ||
+        !samebases(choi.basis_l[2], choi.basis_r[2]))
+        throw(DimensionMismatch("Tried to convert choi state of something that isn't a quantum channel mapping density operators to density operators"))
+    end
+    bl, br = choi.basis_l[2], choi.basis_l[1]
+    #ishermitian(choi.data) || @warn "ChoiState is not hermitian"
+    # TODO: figure out how to do this with sparse matrices using e.g. Arpack.jl or ArnoldiMethod.jl
+    vals, vecs = eigen(Hermitian(Matrix(choi.data)))
+    for val in vals
+        (abs(val) > tol && val < 0) && @warn "eigval $(val) < 0 but abs(eigval) > tol=$(tol)"
+    end
+    ops = [Operator(bl, br, sqrt(val)*reshape(vecs[:,i], length(bl), length(br)))
+           for (i, val) in enumerate(vals) if abs(val) > tol && val > 0]
+    return KrausOperators(bl, br, ops)
+end
+
+KrausOperators(op::SuperOperator; tol=1e-9) = KrausOperators(ChoiState(op; tol=tol); tol=tol)
+
+*(a::ChoiState, b::SuperOperator) = SuperOperator(a)*b
+*(a::SuperOperator, b::ChoiState) = a*SuperOperator(b)
+*(a::KrausOperators, b::SuperOperator) = SuperOperator(a)*b
+*(a::SuperOperator, b::KrausOperators) = a*SuperOperator(b)
+*(a::KrausOperators, b::ChoiState) = SuperOperator(a)*SuperOperator(b)
+*(a::ChoiState, b::KrausOperators) = SuperOperator(a)*SuperOperator(b)
+
+function is_trace_preserving(kraus::KrausOperators; tol=1e-9)
+    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
+    m[abs.(m) .< tol] .= 0
+    return iszero(m)
+end
+
+# this check seems suspect... since it fails while the below check on choi succeeeds
+#function is_valid_channel(kraus::KrausOperators; tol=1e-9)
+#    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
+#    eigs = eigvals(Matrix(m))
+#    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
+#    return iszero(eigs)
+#end
+
+#function is_valid_channel(choi::ChoiState; tol=1e-9)
+#    eigs = eigvals(Hermitian(Matrix(choi.data)))
+#    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
+#    return iszero(eigs)
+#end
+
+function is_valid_channel(choi::ChoiState; tol=1e-9)
+    any(abs.(choi.data - choi.data') .> tol) && return false
+    eigs = eigvals(Hermitian(Matrix(choi.data)))
+    return all(@. abs(eigs) < tol || eigs > 0)
+end

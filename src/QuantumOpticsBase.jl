@@ -36,7 +36,8 @@ export Basis, GenericBasis, CompositeBasis, basis,
                 current_time, time_shift, time_stretch, time_restrict, static_operator,
         #superoperators
                 SuperOperator, DenseSuperOperator, DenseSuperOpType,
-                SparseSuperOperator, SparseSuperOpType, ChoiState, 
+                SparseSuperOperator, SparseSuperOpType, ChoiState, KrausOperators,
+                is_valid_channel, is_trace_preserving, minimize_kraus_rank,
                 spre, spost, sprepost, liouvillian, identitysuperoperator,
         #fock
                 FockBasis, number, destroy, create,
