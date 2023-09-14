@@ -111,6 +111,15 @@ identitysuperoperator(op::SparseSuperOpType) =
 dagger(x::DenseSuperOpType) = SuperOperator(x.basis_r, x.basis_l, copy(adjoint(x.data)))
 dagger(x::SparseSuperOpType) = SuperOperator(x.basis_r, x.basis_l, sparse(adjoint(x.data)))
 
+# https://github.com/qojulia/QuantumOpticsBase.jl/issues/138
+function tensor(a::SuperOperator, b::SuperOperator)
+    basis_l = map(tensor, a.basis_l, b.basis_l)
+    basis_r = map(tensor, a.basis_r, b.basis_r)
+    SuperOperator(basis_l, basis_r, kron(b.data, a.data))
+    # use super_to_choi
+    # https://forest-benchmarking.readthedocs.io/en/latest/superoperator_representations.html
+end
+
 
 """
     spre(op)
@@ -129,7 +138,7 @@ function spre(op::AbstractOperator)
     if !samebases(op.basis_l, op.basis_r)
         throw(ArgumentError("It's not clear what spre of a non-square operator should be. See issue #113"))
     end
-    SuperOperator((op.basis_l, op.basis_l), (op.basis_r, op.basis_r), tensor(op, identityoperator(op)).data)
+    SuperOperator((op.basis_l, op.basis_l), (op.basis_r, op.basis_r), kron(identityoperator(op).data, op.data))
 end
 
 """
