@@ -188,6 +188,8 @@ where ``\\sqrt{ρ}=\\sum_n\\sqrt{λ_n}|ψ⟩⟨ψ|``.
 """
 fidelity(rho::DenseOpType{B,B}, sigma::DenseOpType{B,B}) where {B} = tr(sqrt(sqrt(rho.data)*sigma.data*sqrt(rho.data)))
 
+fidelity(a::Ket, b::Ket) = abs(dagger(a)*b)
+
 
 """
     ptranspose(rho, indices)
@@ -254,10 +256,32 @@ logarithmic_negativity(rho::DenseOpType{B,B}, index) where B<:CompositeBasis = l
 
 The average gate fidelity between two superoperators x and y.
 """
-function avg_gate_fidelity(x::T, y::T) where T <: Union{PauliTransferMatrix{B, B} where B, SuperOperator{B, B} where B, ChiMatrix{B, B} where B}
-    dim = 2 ^ length(x.basis_l)
-    return (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
+# TODO reconcile the two implementations
+#function avg_gate_fidelity(x::T, y::T) where T <: Union{PauliTransferMatrix{B, B} where B, SuperOperator{B, B} where B, ChiMatrix{B, B} where B}
+#    dim = 2 ^ length(x.basis_l)
+#    return (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
+#end
+
+#function fidelity(rho::DenseOpType{B,B}, sigma::DenseOpType{B,B}; tol=1e-10) where {B}
+#    fid = tr(sqrt(sqrt(rho.data)*sigma.data*sqrt(rho.data)))
+#    @assert abs(imag(fid)) < tol
+#    real(fid)
+#end
+
+#function avg_gate_fidelity(x::T, y::T; tol=1e-10) where T <: SuperOperator{B, B} where B
+#    dim = length(x.basis_l)
+#    fid = (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
+#    @assert abs(imag(fid)) < tol
+#    return real(fid)
+#end
+
+function avg_gate_fidelity(x::T, y::T) where T <: SuperOperator{B, B} where B
+    dim = length(x.basis_l)
+    (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
+    # TODO: use tracetorm here?/should this be handeling conversion from complex to real
 end
+
+avg_gate_fidelity(x) = avg_gate_fidelity(x, identitysuperoperator(x))
 
 """
     entanglement_entropy(state, partition, [entropy_fun=entropy_vn])
