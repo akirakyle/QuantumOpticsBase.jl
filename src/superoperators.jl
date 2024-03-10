@@ -327,6 +327,20 @@ end
     throw(IncompatibleBases())
 end
 
+# TODO should all of PauliTransferMatrix, ChiMatrix, ChoiState, and KrausOperators subclass AbstractSuperOperator?
+
+"""
+    Base class for the Kraus representation of superoperators.
+"""
+abstract type KrausOperators{B1, B2} end
+
+struct KrausOperators{B1,B2,T<:DataOperator} <: AbstractSuperOperator
+    basis_l::B1
+    basis_r::B2
+    ops::T
+end
+
+
 # TODO: document why we have super_to_choi return non-trace one density matrices.
 # Note the similarity to permutesystems in operators_dense.jl
 
