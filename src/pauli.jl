@@ -21,9 +21,9 @@ mutable struct DensePauliTransferMatrix{B1,B2,T<:Matrix} <: PauliTransferMatrix{
                                                                                 T<:Matrix}
         if length(basis_l[1])*length(basis_l[2]) != size(data, 1) ||
            length(basis_r[1])*length(basis_r[2]) != size(data, 2)
-            throw(DimensionMismatch())
+            throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(length.(basis_l)), $(length.(basis_r))"))
         end
-        new{BL, BR, T}(basis_l, basis_r, data)
+        new(basis_l, basis_r, data)
     end
 end
 
@@ -50,9 +50,9 @@ mutable struct DenseChiMatrix{B1,B2,T<:Matrix} <: PauliTransferMatrix{B1, B2}
     function DenseChiMatrix(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T<:Matrix}
         if length(basis_l[1])*length(basis_l[2]) != size(data, 1) ||
            length(basis_r[1])*length(basis_r[2]) != size(data, 2)
-            throw(DimensionMismatch())
+            throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(length.(basis_l)), $(length.(basis_r))"))
         end
-        new{BL, BR, T}(basis_l, basis_r, data)
+        new(basis_l, basis_r, data)
     end
 end
 
