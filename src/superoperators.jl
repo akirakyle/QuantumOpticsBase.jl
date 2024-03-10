@@ -332,16 +332,39 @@ end
 """
     Base class for the Kraus representation of superoperators.
 """
-abstract type KrausOperators{B1, B2} end
+#abstract type KrausOperators{B1, B2} end
+#
+#mutable struct KrausOperators{B1,B2,T} <: KrausOperators{B1,B2}
+#    basis_l::B1
+#    basis_r::B2
+#    ops::T
+#end
 
-struct KrausOperators{B1,B2,T<:DataOperator} <: AbstractSuperOperator
+
+"""
+    Base class for the Choi representation of superoperators.
+"""
+#abstract type ChoiState{B1, B2} <:  end
+
+mutable struct ChoiState{B1,B2,T} <: AbstractSuperOperator{B1,B2}
     basis_l::B1
     basis_r::B2
-    ops::T
+    data::T
+    function ChoiState{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
+        if (length(basis_l) != 2 || length(basis_r) != 2 ||
+            length(basis_l[1])*length(basis_l[2]) != size(data, 1) ||
+            length(basis_r[1])*length(basis_r[2]) != size(data, 2))
+            throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(length.(basis_l)), $(length.(basis_r))"))
+        end
+        new(basis_l, basis_r, data)
+    end
 end
-
+ChoiState{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data)
+ChoiState(b1::BL,b2::BR,data::T) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data)
+ChoiState(b,data) = SuperOperator(b,b,data)
 
 # TODO: document why we have super_to_choi return non-trace one density matrices.
+# https://forest-benchmarking.readthedocs.io/en/latest/superoperator_representations.html
 # Note the similarity to permutesystems in operators_dense.jl
 
 """
@@ -397,7 +420,3 @@ end
 
 ChoiState(op::SuperOperator) = ChoiState(_super_choi(op.basis_l, op.basis_r, op.data)...)
 SuperOperator(op::ChoiState) = SuperOperator(_super_choi(op.basis_l, op.basis_r, op.data)...)
-
-*(a::ChoiState, b::SuperOperator) = SuperOperator(a)*b
-*(a::SuperOperator, b::ChoiState) = a*SuperOperator(b)
-
