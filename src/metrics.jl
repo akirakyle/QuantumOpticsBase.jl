@@ -268,18 +268,18 @@ The average gate fidelity between two superoperators x and y.
 #    real(fid)
 #end
 
-#function avg_gate_fidelity(x::T, y::T; tol=1e-10) where T <: SuperOperator{B, B} where B
-#    dim = length(x.basis_l)
-#    fid = (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
-#    @assert abs(imag(fid)) < tol
-#    return real(fid)
-#end
-
-function avg_gate_fidelity(x::T, y::T) where T <: SuperOperator{B, B} where B
+function avg_gate_fidelity(x::T, y::T; tol=1e-10) where T <: SuperOperator{B, B} where B
     dim = length(x.basis_l)
-    (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
-    # TODO: use tracetorm here?/should this be handeling conversion from complex to real
+    fid = (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
+    @assert abs(imag(fid)) < tol
+    return real(fid)
 end
+
+#function avg_gate_fidelity(x::T, y::T) where T <: SuperOperator{B, B} where B
+#    dim = length(x.basis_l)
+#    (tr(transpose(x.data) * y.data) + dim) / (dim^2 + dim)
+#    # TODO: use tracetorm here?/should this be handeling conversion from complex to real
+#end
 
 avg_gate_fidelity(x) = avg_gate_fidelity(x, identitysuperoperator(x))
 
