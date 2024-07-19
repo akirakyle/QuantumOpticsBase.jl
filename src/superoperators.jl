@@ -345,16 +345,23 @@ mutable struct KrausOperators{B1,B2,T} <: AbstractSuperOperator{B1,B2}
     basis_r::B2
     data::T
     function KrausOperators{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
-        if (any(!samebases(basis_r, op.basis_r) for op in data) ||
-            any(!samebases(basis_l, op.basis_l) for op in data))
+        if (any(!samebases(basis_r, M.basis_r) for M in data) ||
+            any(!samebases(basis_l, M.basis_l) for M in data))
             throw(DimensionMismatch("Tried to assign data with incompatible bases"))
         end
+
         new(basis_l, basis_r, data)
     end
 end
 KrausOperators{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 KrausOperators(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 KrausOperators(b,data) = KrausOperators(b,b,data)
+
+function is_trace_preserving(kraus::KrausOperators; tol=1e-9)
+    m = sum(dagger(M)*M for M in kraus.data).data - I(length(kraus.basis_l))
+    m[abs.(m) .< tol] .= 0
+    return iszero(m)
+end
 
 """
     ChoiState(B1, B2, data)
@@ -434,22 +441,23 @@ function _super_choi((r2, l2), (r1, l1), data::SparseMatrixCSC)
 end
 
 ChoiState(op::SuperOperator) = ChoiState(_super_choi(op.basis_l, op.basis_r, op.data)...)
-ChoiState(kraus::KrausOperators) =
-    ChoiState((kraus.basis_l, kraus.basis_l), (kraus.basis_l, kraus.basis_l),
-              (sum(conj(op)⊗op for op in kraus.data)).data)
+SuperOperator(kraus::KrausOperators) =
+    SuperOperator((kraus.basis_l, kraus.basis_l), (kraus.basis_r, kraus.basis_r),
+                  (sum(conj(op)⊗op for op in kraus.data)).data)
 
 SuperOperator(op::ChoiState) = SuperOperator(_super_choi(op.basis_l, op.basis_r, op.data)...)
-SuperOperator(kraus::KrausOperators) = SuperOperator(ChoiState(kraus))
+ChoiState(kraus::KrausOperators) = ChoiState(SuperOperator(kraus))
 
 function KrausOperators(choi::ChoiState; tol=1e-9)
-    if (!samebasis(choi.basis_l[1], basis_l[2]) ||
-        !samebasis(choi.basis_r[1], basis_r[2]))
+    if (!samebases(choi.basis_l[1], choi.basis_l[2]) ||
+        !samebases(choi.basis_r[1], choi.basis_r[2]))
         throw(DimensionMismatch("Tried to convert choi state of something that isn't a quantum channel mapping density operators to density operators"))
     end
     bl, br = choi.basis_l[1], choi.basis_r[1]
-    vals, vecs = eigen(choi)
-    return [Operator(bl, br, sqrt(val)*reshape(vec, length(bl), length(br)))
-            for (val, vec) in zip(vals, vecs) if abs(val) >= tol]
+    vals, vecs = eigen(Matrix(choi.data))
+    ops = [Operator(bl, br, sqrt(val)*reshape(vecs[:,i], length(bl), length(br)))
+           for (i, val) in enumerate(vals) if abs(val) >= tol]
+    return KrausOperators(bl, br, ops)
 end
 
 KrausOperators(op::SuperOperator; tol=1e-9) = KrausOperators(ChoiState(op); tol=tol)

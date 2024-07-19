@@ -39,7 +39,7 @@ export Basis, GenericBasis, CompositeBasis, basis,
                 SparseSuperOperator, SparseSuperOpType, spre, spost, sprepost, liouvillian,
                 identitysuperoperator,
                 SparseSuperOperator, SparseSuperOpType,
-                ChoiState, KrausOperators,
+                ChoiState, KrausOperators, is_trace_preserving,
                 spre, spost, sprepost, liouvillian, identitysuperoperator,
         #fock
                 FockBasis, number, destroy, create,
