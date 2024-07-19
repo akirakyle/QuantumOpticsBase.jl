@@ -330,22 +330,37 @@ end
 # TODO should all of PauliTransferMatrix, ChiMatrix, ChoiState, and KrausOperators subclass AbstractSuperOperator?
 
 """
-    Base class for the Kraus representation of superoperators.
-"""
-#abstract type KrausOperators{B1, B2} end
-#
-#mutable struct KrausOperators{B1,B2,T} <: KrausOperators{B1,B2}
-#    basis_l::B1
-#    basis_r::B2
-#    ops::T
-#end
+    KrausOperators(B1, B2, data)
 
+Superoperator represented as a list of Kraus operators.
+Note unlike the SuperOperator or ChoiState types where
+its possible to have basis_l[1] != basis_l[2] and basis_r[1] != basis_r[2]
+which allows representations of maps between general linear operators defined on H_A \to H_B,
+a quantum channel can only act on valid density operators which live in H_A \to H_A.
+Thus the Kraus representation is only defined for quantum channels which map
+(H_A \to H_A) \to (H_B \to H_B).
+    """
+mutable struct KrausOperators{B1,B2,T} <: AbstractSuperOperator{B1,B2}
+    basis_l::B1
+    basis_r::B2
+    data::T
+    function KrausOperators{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
+        if (any(!samebases(basis_r, op.basis_r) for op in data) ||
+            any(!samebases(basis_l, op.basis_l) for op in data))
+            throw(DimensionMismatch("Tried to assign data with incompatible bases"))
+        end
+        new(basis_l, basis_r, data)
+    end
+end
+KrausOperators{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
+KrausOperators(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
+KrausOperators(b,data) = KrausOperators(b,b,data)
 
 """
-    Base class for the Choi representation of superoperators.
-"""
-#abstract type ChoiState{B1, B2} <:  end
+    ChoiState(B1, B2, data)
 
+Superoperator represented as a choi state stored as a sparse or dense matrix.
+"""
 mutable struct ChoiState{B1,B2,T} <: AbstractSuperOperator{B1,B2}
     basis_l::B1
     basis_r::B2
@@ -361,7 +376,7 @@ mutable struct ChoiState{B1,B2,T} <: AbstractSuperOperator{B1,B2}
 end
 ChoiState{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data)
 ChoiState(b1::BL,b2::BR,data::T) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data)
-ChoiState(b,data) = SuperOperator(b,b,data)
+ChoiState(b,data) = ChoiState(b,b,data)
 
 # TODO: document why we have super_to_choi return non-trace one density matrices.
 # https://forest-benchmarking.readthedocs.io/en/latest/superoperator_representations.html
@@ -419,4 +434,22 @@ function _super_choi((r2, l2), (r1, l1), data::SparseMatrixCSC)
 end
 
 ChoiState(op::SuperOperator) = ChoiState(_super_choi(op.basis_l, op.basis_r, op.data)...)
+ChoiState(kraus::KrausOperators) =
+    ChoiState((kraus.basis_l, kraus.basis_l), (kraus.basis_l, kraus.basis_l),
+              (sum(conj(op)⊗op for op in kraus.data)).data)
+
 SuperOperator(op::ChoiState) = SuperOperator(_super_choi(op.basis_l, op.basis_r, op.data)...)
+SuperOperator(kraus::KrausOperators) = SuperOperator(ChoiState(kraus))
+
+function KrausOperators(choi::ChoiState; tol=1e-9)
+    if (!samebasis(choi.basis_l[1], basis_l[2]) ||
+        !samebasis(choi.basis_r[1], basis_r[2]))
+        throw(DimensionMismatch("Tried to convert choi state of something that isn't a quantum channel mapping density operators to density operators"))
+    end
+    bl, br = choi.basis_l[1], choi.basis_r[1]
+    vals, vecs = eigen(choi)
+    return [Operator(bl, br, sqrt(val)*reshape(vec, length(bl), length(br)))
+            for (val, vec) in zip(vals, vecs) if abs(val) >= tol]
+end
+
+KrausOperators(op::SuperOperator; tol=1e-9) = KrausOperators(ChoiState(op); tol=tol)
