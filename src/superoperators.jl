@@ -358,8 +358,15 @@ KrausOperators(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(
 KrausOperators(b,data) = KrausOperators(b,b,data)
 
 function is_trace_preserving(kraus::KrausOperators; tol=1e-9)
-    m = sum(dagger(M)*M for M in kraus.data).data - I(length(kraus.basis_l))
+    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
     m[abs.(m) .< tol] .= 0
+    return iszero(m)
+end
+
+function is_valid_channel(kraus::KrausOperators; tol=1e-9)
+    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
+    eigs = eigvals(m)
+    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
     return iszero(m)
 end
 
@@ -372,18 +379,21 @@ mutable struct ChoiState{B1,B2,T} <: AbstractSuperOperator{B1,B2}
     basis_l::B1
     basis_r::B2
     data::T
-    function ChoiState{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
+    function ChoiState{BL,BR,T}(basis_l::BL, basis_r::BR, data::T; tol=1e-9) where {BL,BR,T}
         if (length(basis_l) != 2 || length(basis_r) != 2 ||
             length(basis_l[1])*length(basis_l[2]) != size(data, 1) ||
             length(basis_r[1])*length(basis_r[2]) != size(data, 2))
             throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(length.(basis_l)), $(length.(basis_r))"))
         end
-        new(basis_l, basis_r, data)
+        if any(abs.(data - data') .> tol)
+            @warn "Trying to construct ChoiState from non-hermitian data"
+        end
+        new(basis_l, basis_r, Hermitian(data))
     end
 end
-ChoiState{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data)
-ChoiState(b1::BL,b2::BR,data::T) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data)
-ChoiState(b,data) = ChoiState(b,b,data)
+ChoiState{BL,BR}(b1::BL,b2::BR,data::T; tol=1e-9) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data;tol=tol)
+ChoiState(b1::BL,b2::BR,data::T; tol=1e-9) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data; tol=tol)
+ChoiState(b,data; tol=tol) = ChoiState(b,b,data; tol=tol)
 
 # TODO: document why we have super_to_choi return non-trace one density matrices.
 # https://forest-benchmarking.readthedocs.io/en/latest/superoperator_representations.html
@@ -440,7 +450,7 @@ function _super_choi((r2, l2), (r1, l1), data::SparseMatrixCSC)
     return (l1, l2), (r1, r2), sparse(data)
 end
 
-ChoiState(op::SuperOperator) = ChoiState(_super_choi(op.basis_l, op.basis_r, op.data)...)
+ChoiState(op::SuperOperator; tol=1e-9) = ChoiState(_super_choi(op.basis_l, op.basis_r, op.data)...; tol=tol)
 SuperOperator(kraus::KrausOperators) =
     SuperOperator((kraus.basis_l, kraus.basis_l), (kraus.basis_r, kraus.basis_r),
                   (sum(conj(op)⊗op for op in kraus.data)).data)
@@ -454,10 +464,14 @@ function KrausOperators(choi::ChoiState; tol=1e-9)
         throw(DimensionMismatch("Tried to convert choi state of something that isn't a quantum channel mapping density operators to density operators"))
     end
     bl, br = choi.basis_l[1], choi.basis_r[1]
-    vals, vecs = eigen(Matrix(choi.data))
+    #ishermitian(choi.data) || @warn "ChoiState is not hermitian"
+    vals, vecs = eigen(Hermitian(Matrix(choi.data)))
+    for val in vals
+        (abs(val) > tol && val < 0) && @warn "eigval $(val) < 0 but abs(eigval) > tol=$(tol)"
+    end
     ops = [Operator(bl, br, sqrt(val)*reshape(vecs[:,i], length(bl), length(br)))
-           for (i, val) in enumerate(vals) if abs(val) >= tol]
+           for (i, val) in enumerate(vals) if abs(val) > tol && val > 0]
     return KrausOperators(bl, br, ops)
 end
 
-KrausOperators(op::SuperOperator; tol=1e-9) = KrausOperators(ChoiState(op); tol=tol)
+KrausOperators(op::SuperOperator; tol=1e-9) = KrausOperators(ChoiState(op; tol=tol); tol=tol)
