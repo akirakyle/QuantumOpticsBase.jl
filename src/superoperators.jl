@@ -365,9 +365,9 @@ end
 
 function is_valid_channel(kraus::KrausOperators; tol=1e-9)
     m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
-    eigs = eigvals(m)
+    eigs = eigvals(Matrix(m))
     eigs[@. abs(eigs) < tol || eigs > 0] .= 0
-    return iszero(m)
+    return iszero(eigs)
 end
 
 """
@@ -465,6 +465,7 @@ function KrausOperators(choi::ChoiState; tol=1e-9)
     end
     bl, br = choi.basis_l[1], choi.basis_r[1]
     #ishermitian(choi.data) || @warn "ChoiState is not hermitian"
+    # TODO: figure out how to do this with sparse matrices using e.g. Arpack.jl or ArnoldiMethod.jl
     vals, vecs = eigen(Hermitian(Matrix(choi.data)))
     for val in vals
         (abs(val) > tol && val < 0) && @warn "eigval $(val) < 0 but abs(eigval) > tol=$(tol)"
