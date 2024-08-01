@@ -1,6 +1,16 @@
 import QuantumInterface: AbstractSuperOperator
 import FastExpm: fastExpm
 
+# TODO: this should belong in QuantumInterface.jl
+"""
+    tensor(x::AbstractSuperOperator, y::AbstractSuperOperator, z::AbstractSuperOperator...)
+
+Tensor product ``\\hat{x}⊗\\hat{y}⊗\\hat{z}⊗…`` of the given super operators.
+"""
+tensor(a::AbstractSuperOperator, b::AbstractSuperOperator) = arithmetic_binary_error("Tensor product", a, b)
+tensor(op::AbstractSuperOperator) = op
+tensor(operators::AbstractSuperOperator...) = reduce(tensor, operators)
+
 """
     SuperOperator <: AbstractSuperOperator
 
@@ -356,6 +366,12 @@ end
 KrausOperators{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 KrausOperators(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 KrausOperators(b,data) = KrausOperators(b,b,data)
+tensor(a::KrausOperators, b::KrausOperators) =
+    KrausOperators(a.basis_l ⊗ b.basis_l, a.basis_r ⊗ b.basis_r,
+                   [A ⊗ B for A in a.data for B in b.data])
+*(a::KrausOperators{B1,B2}, b::KrausOperators{B2,B3}) where {B1,B2,B3} =
+    KrausOperators(a.basis_l, b.basis_r, [A*B for A in a.data for B in b.data])
+*(a::KrausOperators, b::KrausOperators) = throw(IncompatibleBases())
 
 """
     ChoiState(B1, B2, data)
