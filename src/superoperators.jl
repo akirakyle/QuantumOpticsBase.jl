@@ -446,11 +446,11 @@ SuperOperator(op::ChoiState) = SuperOperator(_super_choi(op.basis_l, op.basis_r,
 ChoiState(kraus::KrausOperators) = ChoiState(SuperOperator(kraus))
 
 function KrausOperators(choi::ChoiState; tol=1e-9)
-    if (!samebases(choi.basis_l[1], choi.basis_l[2]) ||
-        !samebases(choi.basis_r[1], choi.basis_r[2]))
+    if (!samebases(choi.basis_l[1], choi.basis_r[1]) ||
+        !samebases(choi.basis_l[2], choi.basis_r[2]))
         throw(DimensionMismatch("Tried to convert choi state of something that isn't a quantum channel mapping density operators to density operators"))
     end
-    bl, br = choi.basis_l[1], choi.basis_r[1]
+    bl, br = choi.basis_l[2], choi.basis_l[1]
     #ishermitian(choi.data) || @warn "ChoiState is not hermitian"
     # TODO: figure out how to do this with sparse matrices using e.g. Arpack.jl or ArnoldiMethod.jl
     vals, vecs = eigen(Hermitian(Matrix(choi.data)))
