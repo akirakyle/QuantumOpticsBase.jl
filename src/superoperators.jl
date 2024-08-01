@@ -357,19 +357,6 @@ KrausOperators{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL
 KrausOperators(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 KrausOperators(b,data) = KrausOperators(b,b,data)
 
-function is_trace_preserving(kraus::KrausOperators; tol=1e-9)
-    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
-    m[abs.(m) .< tol] .= 0
-    return iszero(m)
-end
-
-function is_valid_channel(kraus::KrausOperators; tol=1e-9)
-    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
-    eigs = eigvals(Matrix(m))
-    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
-    return iszero(eigs)
-end
-
 """
     ChoiState(B1, B2, data)
 
@@ -476,3 +463,23 @@ function KrausOperators(choi::ChoiState; tol=1e-9)
 end
 
 KrausOperators(op::SuperOperator; tol=1e-9) = KrausOperators(ChoiState(op; tol=tol); tol=tol)
+
+function is_trace_preserving(kraus::KrausOperators; tol=1e-9)
+    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
+    m[abs.(m) .< tol] .= 0
+    return iszero(m)
+end
+
+# this check seems suspect... since it fails while the below check on choi succeeeds
+function is_valid_channel(kraus::KrausOperators; tol=1e-9)
+    m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
+    eigs = eigvals(Matrix(m))
+    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
+    return iszero(eigs)
+end
+
+function is_valid_channel(choi::ChoiState; tol=1e-9)
+    eigs = eigvals(Hermitian(Matrix(choi.data)))
+    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
+    return iszero(eigs)
+end
