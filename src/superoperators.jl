@@ -373,6 +373,21 @@ tensor(a::KrausOperators, b::KrausOperators) =
     KrausOperators(a.basis_l, b.basis_r, [A*B for A in a.data for B in b.data])
 *(a::KrausOperators, b::KrausOperators) = throw(IncompatibleBases())
 
+function minimize_kraus_rank(kraus; tol=1e-9)
+    bl, br = kraus.basis_l, kraus.basis_r
+    dim = length(bl)*length(br)
+
+    A = stack(reshape(op.data, dim) for op in kraus.data; dims=1)
+    F = qr(A; tol=tol)
+    rank = maximum(findnz(F.R)[1]) # rank(F) doesn't work but should
+    #@assert (F.R ≈ (sparse(F.Q') * A[F.prow,F.pcol])[1:dim,:])
+    #@assert (all(iszero(F.R[rank+1:end,:])))
+
+    ops = [Operator(bl, br, copy(reshape( # copy materializes reshaped view
+        F.R[i,invperm(F.pcol)], (length(bl), length(br))))) for i=1:rank]
+    return KrausOperators(bl, br, ops)
+end
+
 """
     ChoiState(B1, B2, data)
 
@@ -459,7 +474,10 @@ SuperOperator(kraus::KrausOperators) =
                   (sum(conj(op)⊗op for op in kraus.data)).data)
 
 SuperOperator(op::ChoiState) = SuperOperator(_super_choi(op.basis_l, op.basis_r, op.data)...)
-ChoiState(kraus::KrausOperators) = ChoiState(SuperOperator(kraus))
+ChoiState(kraus::KrausOperators; tol=1e-9) =
+    ChoiState((kraus.basis_r, kraus.basis_l), (kraus.basis_r, kraus.basis_l),
+              (sum((M=op.data; reshape(M, (length(M), 1))*reshape(M, (1, length(M))))
+                   for op in kraus.data)); tol=tol)
 
 function KrausOperators(choi::ChoiState; tol=1e-9)
     if (!samebases(choi.basis_l[1], choi.basis_r[1]) ||
