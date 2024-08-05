@@ -369,9 +369,12 @@ KrausOperators(b,data) = KrausOperators(b,b,data)
 tensor(a::KrausOperators, b::KrausOperators) =
     KrausOperators(a.basis_l ⊗ b.basis_l, a.basis_r ⊗ b.basis_r,
                    [A ⊗ B for A in a.data for B in b.data])
+dagger(a::KrausOperators) = KrausOperators(a.basis_r, a.basis_l, [dagger(op) for op in a.data])
 *(a::KrausOperators{B1,B2}, b::KrausOperators{B2,B3}) where {B1,B2,B3} =
     KrausOperators(a.basis_l, b.basis_r, [A*B for A in a.data for B in b.data])
 *(a::KrausOperators, b::KrausOperators) = throw(IncompatibleBases())
+*(a::KrausOperators{BL,BR}, b::Operator{BR,BR}) where {BL,BR} =
+    sum(op*b*dagger(op) for op in a.data)
 
 function minimize_kraus_rank(kraus; tol=1e-9)
     bl, br = kraus.basis_l, kraus.basis_r
@@ -412,6 +415,9 @@ end
 ChoiState{BL,BR}(b1::BL,b2::BR,data::T; tol=1e-9) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data;tol=tol)
 ChoiState(b1::BL,b2::BR,data::T; tol=1e-9) where {BL,BR,T} = ChoiState{BL,BR,T}(b1,b2,data; tol=tol)
 ChoiState(b,data; tol=tol) = ChoiState(b,b,data; tol=tol)
+dagger(a::ChoiState) = ChoiState(dagger(SuperOperator(a)))
+*(a::ChoiState, b::ChoiState) = ChoiState(SuperOperator(a)*SuperOperator(b))
+*(a::ChoiState, b::Operator) = SuperOperator(a)*b
 
 # TODO: document why we have super_to_choi return non-trace one density matrices.
 # https://forest-benchmarking.readthedocs.io/en/latest/superoperator_representations.html
@@ -497,6 +503,13 @@ function KrausOperators(choi::ChoiState; tol=1e-9)
 end
 
 KrausOperators(op::SuperOperator; tol=1e-9) = KrausOperators(ChoiState(op; tol=tol); tol=tol)
+
+*(a::ChoiState, b::SuperOperator) = SuperOperator(a)*b
+*(a::SuperOperator, b::ChoiState) = a*SuperOperator(b)
+*(a::KrausOperators, b::SuperOperator) = SuperOperator(a)*b
+*(a::SuperOperator, b::KrausOperators) = a*SuperOperator(b)
+*(a::KrausOperators, b::ChoiState) = SuperOperator(a)*SuperOperator(b)
+*(a::ChoiState, b::KrausOperators) = SuperOperator(a)*SuperOperator(b)
 
 function is_trace_preserving(kraus::KrausOperators; tol=1e-9)
     m = I(length(kraus.basis_r)) - sum(dagger(M)*M for M in kraus.data).data
