@@ -525,8 +525,14 @@ function is_valid_channel(kraus::KrausOperators; tol=1e-9)
     return iszero(eigs)
 end
 
+#function is_valid_channel(choi::ChoiState; tol=1e-9)
+#    eigs = eigvals(Hermitian(Matrix(choi.data)))
+#    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
+#    return iszero(eigs)
+#end
+
 function is_valid_channel(choi::ChoiState; tol=1e-9)
+    any(abs.(choi.data - choi.data') .> tol) && return false
     eigs = eigvals(Hermitian(Matrix(choi.data)))
-    eigs[@. abs(eigs) < tol || eigs > 0] .= 0
-    return iszero(eigs)
+    return all(@. abs(eigs) < tol || eigs > 0)
 end
