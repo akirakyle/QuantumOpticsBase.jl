@@ -247,20 +247,64 @@ N = exp(log(2) * sparse(L)) # 50% loss channel
 @test (0.5 - real(tr(ρ^2))) < 1e-10 # one photon state becomes maximally mixed
 @test tracedistance(ρ, normalize(dm(fockstate(b, 0)) + dm(fockstate(b, 1)))) < 1e-10
 
-# Testing 0-2-4 binomial code encoder
+# 0-2-4 binomial code encoder
 b_logical = SpinBasis(1//2)
 b_fock = FockBasis(5)
 z_l = normalize(fockstate(b_fock, 0) + fockstate(b_fock, 4))
 o_l = fockstate(b_fock, 2)
-encoder_kraus = z_l ⊗ dagger(spinup(b_logical)) + o_l ⊗ dagger(spindown(b_logical))
-    encoder_sup = sprepost(encoder_kraus, dagger(encoder_kraus))
-decoder_sup = sprepost(dagger(encoder_kraus), encoder_kraus)
-@test SuperOperator(ChoiState(encoder_sup)).data == encoder_sup.data
-@test decoder_sup == dagger(encoder_sup)
-@test ChoiState(decoder_sup) == dagger(ChoiState(encoder_sup))
-@test decoder_sup*encoder_sup ≈ dense(identitysuperoperator(b_logical))
-@test decoder_sup*ChoiState(encoder_sup) ≈ dense(identitysuperoperator(b_logical))
-@test ChoiState(decoder_sup)*encoder_sup ≈ dense(identitysuperoperator(b_logical))
-@test SuperOperator(ChoiState(decoder_sup)*ChoiState(encoder_sup)) ≈ dense(identitysuperoperator(b_logical))
+enc_proj = z_l ⊗ dagger(spinup(b_logical)) + o_l ⊗ dagger(spindown(b_logical))
+dec_proj = dagger(enc_proj)
+enc_sup = sprepost(enc_proj, dec_proj)
+dec_sup = sprepost(dec_proj, enc_proj)
+enc_kraus = KrausOperators(b_fock, b_logical, [enc_proj])
+dec_kraus = KrausOperators(b_logical, b_fock, [dec_proj])
+## testing conversions
+@test dec_sup == dagger(enc_sup)
+@test dec_kraus == dagger(enc_kraus)
+@test ChoiState(enc_sup) == ChoiState(enc_kraus)
+@test ChoiState(dec_sup) == dagger(ChoiState(enc_sup))
+@test ChoiState(dec_kraus) == dagger(ChoiState(enc_kraus))
+@test SuperOperator(ChoiState(enc_sup)) == enc_sup
+@test SuperOperator(KrausOperators(enc_sup)) == enc_sup
+@test KrausOperators(ChoiState(enc_kraus)) == enc_kraus
+@test KrausOperators(SuperOperator(enc_kraus)) == enc_kraus
+## testing multipication
+@test dec_sup*enc_sup ≈ dense(identitysuperoperator(b_logical))
+@test SuperOperator(dec_kraus*enc_kraus) ≈ dense(identitysuperoperator(b_logical))
+@test dec_sup*enc_kraus ≈ dense(identitysuperoperator(b_logical))
+@test dec_kraus*enc_sup ≈ dense(identitysuperoperator(b_logical))
+@test SuperOperator(dec_kraus*enc_kraus) ≈ dense(identitysuperoperator(b_logical))
+@test dec_sup*ChoiState(enc_sup) ≈ dense(identitysuperoperator(b_logical))
+@test ChoiState(dec_sup)*enc_sup ≈ dense(identitysuperoperator(b_logical))
+@test SuperOperator(ChoiState(dec_sup)*ChoiState(enc_sup)) ≈ dense(identitysuperoperator(b_logical))
+
+@test avg_gate_fidelity(dec_sup*enc_sup) ≈ 1
+@test avg_gate_fidelity(dec_kraus*enc_kraus) ≈ 1
+@test avg_gate_fidelity(ChoiState(dec_sup)*ChoiState(enc_sup)) ≈ 1
+
+# test amplitude damping channel
+function amplitude_damp_kraus_op(b, γ, l)
+    op = SparseOperator(b)
+    for n=l:(length(b)-1)
+        op.data[n-l+1, n+1] = sqrt(binomial(n,l) * (1-γ)^(n-l) * γ^l)
+    end
+    return op
+end
+
+function test_kraus_channel(N, γ, tol)
+    b = FockBasis(N)
+    super = exp(liouvillian(identityoperator(b), [destroy(b)]))
+    kraus = KrausOperators(b, b, [amplitude_damp_kraus_op(b, γ, i) for i=0:(N-1)])
+    @test SuperOperator(kraus) ≈ super
+    @test ChoiState(kraus) ≈ ChoiState(super)
+    @test kraus ≈ KrausOperators(super; tol=tol)
+    @test is_trace_preserving(kraus; tol=tol)
+    @test is_valid_channel(kraus; tol=tol)
+end
+
+test_kraus_channel(10, 0.1, 1e-8)
+test_kraus_channel(20, 0.1, 1e-8)
+test_kraus_channel(10, 0.01, 1e-8)
+test_kraus_channel(20, 0.01, 1e-8)
 
 end # testset
