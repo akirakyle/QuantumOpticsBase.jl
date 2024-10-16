@@ -37,7 +37,7 @@ export Basis, GenericBasis, CompositeBasis, basis,
         #superoperators
                 SuperOperator, DenseSuperOperator, DenseSuperOpType,
                 SparseSuperOperator, SparseSuperOpType, ChoiState, KrausOperators,
-                canonicalize, orthogonalize, is_cptp, is_cptni,
+                canonicalize, orthogonalize, make_trace_preserving, is_cptp, is_cptni,
                 is_completely_positive, is_trace_preserving, is_trace_nonincreasing,
                 spre, spost, sprepost, liouvillian, identitysuperoperator,
         #fock

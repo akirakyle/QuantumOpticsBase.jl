@@ -412,8 +412,8 @@ Thus the Kraus representation is only defined for quantum channels which map
 mutable struct KrausOperators{B1,B2,T} <: AbstractSuperOperator{B1,B2}
     basis_l::B1
     basis_r::B2
-    data::T
-    function KrausOperators{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
+    data::Vector{T}
+    function KrausOperators{BL,BR,T}(basis_l::BL, basis_r::BR, data::Vector{T}) where {BL,BR,T}
         if (any(!samebases(basis_r, M.basis_r) for M in data) ||
             any(!samebases(basis_l, M.basis_l) for M in data))
             throw(DimensionMismatch("Tried to assign data with incompatible bases"))
@@ -422,8 +422,8 @@ mutable struct KrausOperators{B1,B2,T} <: AbstractSuperOperator{B1,B2}
         new(basis_l, basis_r, data)
     end
 end
-KrausOperators{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
-KrausOperators(b1::BL,b2::BR,data::T) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
+KrausOperators{BL,BR}(b1::BL,b2::BR,data::Vector{T}) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
+KrausOperators(b1::BL,b2::BR,data::Vector{T}) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 
 tensor(a::KrausOperators, b::KrausOperators) =
     KrausOperators(a.basis_l ⊗ b.basis_l, a.basis_r ⊗ b.basis_r,
@@ -437,20 +437,19 @@ dagger(a::KrausOperators) = KrausOperators(a.basis_r, a.basis_l, [dagger(op) for
 isapprox(a::KrausOperators, b::KrausOperators; kwargs...) = isapprox(SuperOperator(a), SuperOperator(b); kwargs...)
 
 """
-    canonicalize(kraus::KrausOperators; tol=1e-12)
+    orthogonalize(kraus::KrausOperators; tol=1e-12)
 
-Canonicalize the set kraus operators by performing a qr decomposition.
-A quantum channel with kraus operators ``{A_k}`` is in cannonical form if and only if
-
-```math
-\\Tr A_i^\\dagger A_j \\sim \\delta_{i,j}
-```
+Orthogonalize the set kraus operators by performing a qr decomposition on their vec'd operators.
+Note that this is different than `canonicalize` which returns a kraus decomposition such
+that the kraus operators are Hilbert–Schmidt orthorgonal.
 
 If the input dimension is d and output dimension is d' then the number of kraus
-operators returned is guaranteed to be no greater than dd' and will furthermore
-be equal the Kraus rank of the channel up to numerical imprecision controlled by `tol`.  
+operators returned is guaranteed to be no greater than dd', however it may be greater
+than the Kraus rank.
+
+`orthogonalize` should always be much faster than canonicalize as it avoids an explicit eigendecomposition.
 """
-function canonicalize(kraus::KrausOperators; tol=1e-12)
+function orthogonalize(kraus::KrausOperators; tol=1e-12)
     bl, br = kraus.basis_l, kraus.basis_r
     dim = length(bl)*length(br)
 
@@ -467,8 +466,31 @@ function canonicalize(kraus::KrausOperators; tol=1e-12)
     return KrausOperators(bl, br, ops)
 end
 
-# TODO: check if canonicalize and orthogonalize are equivalent
-orthogonalize(kraus::KrausOperators; tol=1e-12) = KrausOperators(ChoiState(kraus); tol=tol)
+"""
+    canonicalize(kraus::KrausOperators; tol=1e-12)
+
+Transform the quantum channel into canonical form such that the kraus operators ``{A_k}``
+are Hilbert–Schmidt orthorgonal:
+
+```math
+\\Tr A_i^\\dagger A_j \\sim \\delta_{i,j}
+```
+
+If the input dimension is d and output dimension is d' then the number of kraus
+operators returned is guaranteed to be no greater than dd' and will furthermore
+be equal the Kraus rank of the channel up to numerical imprecision controlled by `tol`.  
+"""
+canonicalize(kraus::KrausOperators; tol=1e-12) = KrausOperators(ChoiState(kraus); tol=tol)
+
+# TODO: document
+function make_trace_preserving(kraus;  tol=1e-12)
+    m = I - sum(dagger(M)*M for M in kraus.data).data
+    if isa(_positive_eigen(m; tol=tol), Number)
+        throw(ArgumentError("Channel must be trace nonincreasing"))
+    end
+    K = Operator(kraus.basis_l, kraus.basis_r, sqrt(Matrix(m)))
+    return KrausOperators(kraus.basis_l, kraus.basis_r, [kraus.data; K])
+end
 
 SuperOperator(kraus::KrausOperators) =
     SuperOperator((kraus.basis_l, kraus.basis_l), (kraus.basis_r, kraus.basis_r),
@@ -536,18 +558,18 @@ function is_completely_positive(choi::ChoiState; tol=1e-12)
     return true
 end
 
-is_completely_positive(super::SuperOperator; tol=1e-12) = is_completely_positive(ChoiState(super))
+is_completely_positive(super::SuperOperator; tol=1e-12) =
+    is_completely_positive(ChoiState(super); tol=tol)
 
 # TODO: document this
 is_trace_preserving(kraus::KrausOperators; tol=1e-12) =
     _is_identity(sum(dagger(M)*M for M in kraus.data).data, tol=tol)
 
-function is_trace_preserving(choi::ChoiState; tol=1e-12)
-    is_completely_positive(choi; tol=tol) || return false
-    return _is_identity(ptrace(choi_to_operator(choi), 1).data, tol=tol)
-end
+is_trace_preserving(choi::ChoiState; tol=1e-12) =
+    _is_identity(ptrace(choi_to_operator(choi), 1).data, tol=tol)
 
-is_trace_preserving(super::SuperOperator; tol=1e-12) = is_trace_preserving(ChoiState(super); tol=tol)
+is_trace_preserving(super::SuperOperator; tol=1e-12) =
+    is_trace_preserving(ChoiState(super); tol=tol)
 
 # TODO: document this
 function is_trace_nonincreasing(kraus::KrausOperators; tol=1e-12)
@@ -556,12 +578,12 @@ function is_trace_nonincreasing(kraus::KrausOperators; tol=1e-12)
 end
 
 function is_trace_nonincreasing(choi::ChoiState; tol=1e-12)
-    is_completely_positive(choi; tol=tol) || return false
     m = I - ptrace(choi_to_operator(choi), 1).data
     return !isa(_positive_eigen(m; tol=tol), Number)
 end
 
-is_trace_nonincreasing(super::SuperOperator; tol=1e-12) = is_trace_nonincreasing(ChoiState(super); tol=tol)
+is_trace_nonincreasing(super::SuperOperator; tol=1e-12) =
+    is_trace_nonincreasing(ChoiState(super); tol=tol)
 
 # TODO: document this
 is_cptp(sop; tol=1e-12) = is_completely_positive(sop; tol=tol) && is_trace_preserving(sop; tol=tol)
