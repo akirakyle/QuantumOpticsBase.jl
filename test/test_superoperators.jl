@@ -291,29 +291,46 @@ dec_kraus = KrausOperators(b_logical, b_fock, [dec_proj])
 #@test avg_gate_fidelity(dec_kraus*enc_kraus) ≈ 1
 #@test avg_gate_fidelity(ChoiState(dec_sup)*ChoiState(enc_sup)) ≈ 1
 
-# test amplitude damping channel
-function amplitude_damp_kraus_op(b, κ, l)
-    γ = 1-exp(-κ)
-    op = SparseOperator(b)
-    for n=l:(length(b)-1)
-        op.data[n-l+1, n+1] = sqrt(binomial(n,l) * (1-γ)^(n-l) * γ^l)
-    end
-    return op
+# test qubit amplitude and phase damping channels
+function ampl_damp_kraus(γ)
+    b = SpinBasis(1//2)
+    K0 = dm(spindown(b)) + sqrt(1-γ)*dm(spinup(b))
+    K1 = sqrt(γ)*sigmam(b)
+    return KrausOperators(b,b,[K0, K1])
 end
 
-function test_amplitude_damp_kraus_channel(N, κ, tol)
-    b = FockBasis(N)
-    super = exp(liouvillian(identityoperator(b), [destroy(b)]; rates=[κ]))
-    kraus = KrausOperators(b, b, [amplitude_damp_kraus_op(b, κ, i) for i=0:(N-1)])
+function phase_damp_kraus(γ)
+    b = SpinBasis(1//2)
+    K0 = dm(spindown(b)) + sqrt(1-γ)*dm(spinup(b))
+    K1 = sqrt(γ)*dm(spinup(b))
+    return KrausOperators(b,b,[K0, K1])
+end
+
+function test_channel(κa, κp)
+    tol = 1e-7
+    b = SpinBasis(1//2)
+    La = liouvillian(identityoperator(b), [sigmam(b)]; rates=[κa])
+    Lp = liouvillian(identityoperator(b), [sigmaz(b)]; rates=[κp])
+    super = exp(La + Lp)
+    ka = ampl_damp_kraus(1-exp(-κa))
+    kp = phase_damp_kraus(1-exp(-4*κp))
+    kraus = ka*kp
+    @test is_cptp(super; tol=tol)
+    @test is_cptp(kraus; tol=tol)
     @test isapprox(SuperOperator(kraus), super; atol=tol)
     @test isapprox(ChoiState(kraus), ChoiState(super); atol=tol)
     @test isapprox(kraus, KrausOperators(super; tol=tol); atol=tol)
-    @test is_cptp(kraus; tol=tol)
+    return kraus, super
 end
 
-test_amplitude_damp_kraus_channel(10, 0.1, 1e-7)
-test_amplitude_damp_kraus_channel(20, 0.1, 1e-7)
-test_amplitude_damp_kraus_channel(10, 0.01, 1e-7)
-test_amplitude_damp_kraus_channel(20, 0.01, 1e-8)
+test_channel(1e-1, 0)
+test_channel(1e-2, 0)
+test_channel(1e-3, 0)
+test_channel(0, 1e-1)
+test_channel(0, 1e-2)
+test_channel(0, 1e-3)
+test_channel(1e-1, 1e-1)
+test_channel(1e-2, 1e-2)
+test_channel(1e-3, 1e-3)
 
 end # testset
