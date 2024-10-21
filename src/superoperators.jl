@@ -1,6 +1,21 @@
 import Base: isapprox
 import QuantumInterface: AbstractSuperOperator
 import FastExpm: fastExpm
+import KrylovKit: eigsolve
+
+# TODO: this should belong in QuantumInterface.jl
+abstract type OperatorBasis{BL<:Basis,BR<:Basis} end
+abstract type SuperOperatorBasis{BL<:OperatorBasis,BR<:OperatorBasis} end
+
+"""
+    tensor(E::AbstractSuperOperator, F::AbstractSuperOperator, G::AbstractSuperOperator...)
+
+Tensor product ``\\mathcal{E}⊗\\mathcal{F}⊗\\mathcal{G}⊗…`` of the given super operators.
+"""
+tensor(a::AbstractSuperOperator, b::AbstractSuperOperator) = arithmetic_binary_error("Tensor product", a, b)
+tensor(op::AbstractSuperOperator) = op
+tensor(operators::AbstractSuperOperator...) = reduce(tensor, operators)
+
 
 """
     SuperOperator <: AbstractSuperOperator
@@ -355,8 +370,25 @@ dagger(a::ChoiState) = ChoiState(dagger(SuperOperator(a)))
 ==(a::ChoiState, b::ChoiState) = (SuperOperator(a) == SuperOperator(b))
 isapprox(a::ChoiState, b::ChoiState; kwargs...) = isapprox(SuperOperator(a), SuperOperator(b); kwargs...)
 
-# TOOD: decide whether to document and export this
-choi_to_operator(c::ChoiState) = Operator(c.basis_l[2]⊗c.basis_l[1], c.basis_r[2]⊗c.basis_r[1], c.data)
+# Container to hold each of the four bases for a Choi operator when converting it to
+# an operator so that if any are CompositeBases tensor doesn't lossily collapse them
+struct ChoiSubBasis{S,B<:Basis} <: Basis
+    shape::S
+    basis::B
+end
+ChoiSubBasis(b::Basis) = ChoiSubBasis(b.shape, b)
+
+# TODO: decide whether to document and export this
+choi_to_operator(c::ChoiState) = Operator(
+    ChoiSubBasis(c.basis_l[2])⊗ChoiSubBasis(c.basis_l[1]), ChoiSubBasis(c.basis_r[2])⊗ChoiSubBasis(c.basis_r[1]), c.data)
+
+function tensor(a::ChoiState, b::ChoiState)
+    op = choi_to_operator(a) ⊗ choi_to_operator(b)
+    op = permutesystems(op, [1,3,2,4])
+    ChoiState((a.basis_l[1] ⊗ b.basis_l[1], a.basis_l[2] ⊗ b.basis_l[2]),
+              (a.basis_r[1] ⊗ b.basis_r[1], a.basis_r[2] ⊗ b.basis_r[2]), op.data)
+end
+tensor(a::SuperOperator, b::SuperOperator) = SuperOperator(tensor(ChoiState(a), ChoiState(b)))
 
 # reshape swaps within systems due to colum major ordering
 # https://docs.qojulia.org/quantumobjects/operators/#tensor_order
@@ -425,9 +457,8 @@ end
 KrausOperators{BL,BR}(b1::BL,b2::BR,data::Vector{T}) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 KrausOperators(b1::BL,b2::BR,data::Vector{T}) where {BL,BR,T} = KrausOperators{BL,BR,T}(b1,b2,data)
 
-tensor(a::KrausOperators, b::KrausOperators) =
-    KrausOperators(a.basis_l ⊗ b.basis_l, a.basis_r ⊗ b.basis_r,
-                   [A ⊗ B for A in a.data for B in b.data])
+dense(a::KrausOperators) = KrausOperators(a.basis_l, a.basis_r, [dense(op) for op in a.data])
+sparse(a::KrausOperators) = KrausOperators(a.basis_l, a.basis_r, [sparse(op) for op in a.data])
 dagger(a::KrausOperators) = KrausOperators(a.basis_r, a.basis_l, [dagger(op) for op in a.data])
 *(a::KrausOperators{B1,B2}, b::KrausOperators{B2,B3}) where {B1,B2,B3} =
     KrausOperators(a.basis_l, b.basis_r, [A*B for A in a.data for B in b.data])
@@ -435,6 +466,9 @@ dagger(a::KrausOperators) = KrausOperators(a.basis_r, a.basis_l, [dagger(op) for
 *(a::KrausOperators{BL,BR}, b::Operator{BR,BR}) where {BL,BR} = sum(op*b*dagger(op) for op in a.data)
 ==(a::KrausOperators, b::KrausOperators) = (SuperOperator(a) == SuperOperator(b))
 isapprox(a::KrausOperators, b::KrausOperators; kwargs...) = isapprox(SuperOperator(a), SuperOperator(b); kwargs...)
+tensor(a::KrausOperators, b::KrausOperators) =
+    KrausOperators(a.basis_l ⊗ b.basis_l, a.basis_r ⊗ b.basis_r,
+                   [A ⊗ B for A in a.data for B in b.data])
 
 """
     orthogonalize(kraus::KrausOperators; tol=1e-12)
@@ -509,16 +543,28 @@ _is_hermitian(M; tol=1e-12) = ishermitian(M) || isapprox(M, M', atol=tol)
 _is_identity(M; tol=1e-12) = isapprox(M, I, atol=tol)
 
 # TODO: document
+# data must be Hermitian!
+# performance of dense version typically faster until underlying hilbert spaces
+# have dimension on the order 60 or so?
 function _positive_eigen(data; tol=1e-12)
-    # TODO: figure out how to do this with sparse matrices using e.g. Arpack.jl or ArnoldiMethod.jl
-    # I will want to run twice, first asking for smallest eigenvalue to check it is above -tol
-    # Then run a second time with asking for maybe sqrt(N) largest eigenvalues?
-    # If smallest of these is not smaller than tol, bail do dense method? 
     # LinearAlgebra's eigen returns eigenvals sorted smallest to largest for Hermitian matrices
     vals, vecs = eigen(Hermitian(Matrix(data)))
     vals[1] < -tol && return vals[1]
     return [(val, vecs[:,i]) for (i, val) in enumerate(vals) if val > tol]
 end
+
+# To control the precision of eigsolve, set KrylovDefaults.tol
+# this isn't controlled by tol since we genally want KrolovKit to run
+# with much higher precision so the eigenvectors we get are "good"
+function _positive_eigen(data::SparseMatrixCSC; tol=1e-12)
+    vals, vecs, info = eigsolve(Hermitian(data), 1, :SR)
+    info.converged < 1 && return -Inf
+    vals[1] < -tol && return vals[1]
+    vals, vecs, info = eigsolve(Hermitian(data), 1, :LM)
+    vals[end] > tol && return _positive_eigen(Matrix(data); tol=tol)
+    return [(val, vec) for (val, vec) in zip(vals, vecs) if val > tol]
+end
+
 
 function KrausOperators(choi::ChoiState; tol=1e-12)
     if !_choi_state_maps_density_ops(choi)
