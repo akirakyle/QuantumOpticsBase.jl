@@ -4,6 +4,7 @@ version = "0.5.3"
 
 [deps]
 Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+ArnoldiMethod = "ec485272-7323-5ecc-a04f-4719b315124d"
 FFTW = "7a1cc6ca-52ef-59f5-83cd-3a7055c09341"
 FastExpm = "7868e603-8603-432e-a1a1-694bd70b01f2"
 FastGaussQuadrature = "442a2c76-b920-505d-bb47-c5924d526838"
@@ -21,6 +22,7 @@ UnsafeArrays = "c4a57d5a-5b31-53a6-b365-19f8c011fbd6"
 
 [compat]
 Adapt = "1, 2, 3.3, 4"
+ArnoldiMethod = "0.4.0"
 FFTW = "1.2"
 FastExpm = "1.1.0"
 FastGaussQuadrature = "0.5, 1"

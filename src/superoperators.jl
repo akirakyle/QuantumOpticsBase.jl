@@ -2,6 +2,7 @@ import Base: isapprox
 import QuantumInterface: AbstractSuperOperator
 import FastExpm: fastExpm
 import KrylovKit: eigsolve
+using ArnoldiMethod
 
 # TODO: this should belong in QuantumInterface.jl
 abstract type OperatorBasis{BL<:Basis,BR<:Basis} end
@@ -547,22 +548,73 @@ _is_identity(M; tol=1e-12) = isapprox(M, I, atol=tol)
 # performance of dense version typically faster until underlying hilbert spaces
 # have dimension on the order 60 or so?
 function _positive_eigen(data; tol=1e-12)
+    @assert ishermitian(data)
     # LinearAlgebra's eigen returns eigenvals sorted smallest to largest for Hermitian matrices
     vals, vecs = eigen(Hermitian(Matrix(data)))
+    println("dense eigs: ", reverse(vals))
     vals[1] < -tol && return vals[1]
-    return [(val, vecs[:,i]) for (i, val) in enumerate(vals) if val > tol]
+    ret = [(val, vecs[:,i]) for (i, val) in enumerate(vals) if val > tol]
+    #for (val, vec) in ret
+    #    println("dense eigs: ", val)
+    #    vec = abs.(vec)
+    #    vec[vec .< 1e-8] .= 0
+    #    println("vec: ", vec)
+    #end
+    return ret
 end
 
 # To control the precision of eigsolve, set KrylovDefaults.tol
 # this isn't controlled by tol since we genally want KrolovKit to run
 # with much higher precision so the eigenvectors we get are "good"
-function _positive_eigen(data::SparseMatrixCSC; tol=1e-12)
+function _positive_eigen_kryolov(data::SparseMatrixCSC; tol=1e-12)
     vals, vecs, info = eigsolve(Hermitian(data), 1, :SR)
     info.converged < 1 && return -Inf
     vals[1] < -tol && return vals[1]
     vals, vecs, info = eigsolve(Hermitian(data), 1, :LM)
-    vals[end] > tol && return _positive_eigen(Matrix(data); tol=tol)
-    return [(val, vec) for (val, vec) in zip(vals, vecs) if val > tol]
+    println("sparse eigs: ", reverse(vals))
+    vals[end] > tol && (println("bailing...");
+    return _positive_eigen(Matrix(data); tol=tol))
+    ret = [(vals[i], vecs[i]) for i=length(vals):-1:1  if vals[i] > tol]
+    #for (val, vec) in ret
+    #    println("sparse eigs: ", val)
+    #    vec = abs.(vec)
+    #    vec[vec .< 1e-8] .= 0
+    #    println("vec: ", vec)
+    #end
+    return ret
+end
+
+function _positive_eigen(data::SparseMatrixCSC; tol=1e-12)
+    @assert ishermitian(data)
+    dim = size(data, 1)
+    F, info = partialschur(data; nev=1, which=:SR);
+    info.converged > 0 || return _positive_eigen(Matrix(data); tol=tol)
+    @assert abs(imag(F.eigenvalues[1])) < tol
+    real(F.eigenvalues[1]) < -tol && return real(F.eigenvalues[1])
+
+    nev = floor(Int, sqrt(dim))
+    maxdim = dim < 16 ? dim : floor(Int, dim/4)
+    println("dim=", dim, ",  maxdim=", maxdim,",  nev=", nev)
+    #V, H = rand(eltype(data), size(data, 1), 2*nev+1), rand(eltype(data), 2*nev+1, 2*nev)
+    #V, H = rand(eltype(data), dim, dim + 1), rand(eltype(data), dim + 1, dim)
+    #arnoldi = ArnoldiWorkspace(V, H)
+    arnoldi = ArnoldiWorkspace(eltype(data), dim, maxdim)
+    start_from = 1
+
+    while true
+        F, info = partialschur!(data, arnoldi; nev=nev, mindim=nev, maxdim=maxdim,
+                                start_from=start_from, which=:LM)
+        println("num eigs: ", length(F.eigenvalues), "   info: ", info)
+        @assert all(@. abs(imag(F.eigenvalues)) < tol)
+        info.nconverged == nev && (real.(F.eigenvalues))[end] < tol && break
+        nev *= 2
+        nev > maxdim && return (println("bailing..."); _positive_eigen(Matrix(data); tol=tol))
+        start_from = info.nconverged+1
+    end
+    
+    println("new sparse eigs: ", real.(F.eigenvalues))
+    return [(real(F.eigenvalues[i]), F.Q[:,i]) for i=1:length(F.eigenvalues)
+                if real(F.eigenvalues[i]) > tol]
 end
 
 
@@ -600,7 +652,7 @@ is_completely_positive(choi::KrausOperators; tol=1e-12) = true
 function is_completely_positive(choi::ChoiState; tol=1e-12)
     _choi_state_maps_density_ops(choi) || return false
     _is_hermitian(choi.data; tol=tol) || return false
-    isa(_positive_eigen(choi.data; tol=tol), Number) && return false
+    isa(_positive_eigen(Hermitian(choi.data); tol=tol), Number) && return false
     return true
 end
 
@@ -620,12 +672,14 @@ is_trace_preserving(super::SuperOperator; tol=1e-12) =
 # TODO: document this
 function is_trace_nonincreasing(kraus::KrausOperators; tol=1e-12)
     m = I - sum(dagger(M)*M for M in kraus.data).data
-    return !isa(_positive_eigen(m; tol=tol), Number)
+    _is_hermitian(m; tol=tol) || return false
+    return !isa(_positive_eigen(Hermitian(m); tol=tol), Number)
 end
 
 function is_trace_nonincreasing(choi::ChoiState; tol=1e-12)
     m = I - ptrace(choi_to_operator(choi), 1).data
-    return !isa(_positive_eigen(m; tol=tol), Number)
+    _is_hermitian(m; tol=tol) || return false
+    return !isa(_positive_eigen(Hermitian(m); tol=tol), Number)
 end
 
 is_trace_nonincreasing(super::SuperOperator; tol=1e-12) =
