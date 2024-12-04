@@ -12,7 +12,7 @@ end
 """
 Abstract class for all Lazy type operators ([`LazySum`](@ref), [`LazyProduct`](@ref), and [`LazyTensor`](@ref))
 """
-abstract type LazyOperator{BL,BR} <: AbstractOperator{BL,BR} end
+abstract type LazyOperator{B} <: AbstractOperator{B} end
 
 """
     LazySum([Tf,] [factors,] operators)

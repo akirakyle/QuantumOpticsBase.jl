@@ -29,7 +29,7 @@ ket = Ket(b)
 @test length(ket) == length(ket.data) == 15
 @test QuantumOpticsBase.basis(ket) == b
 @test QuantumOpticsBase.basis(bra) == b
-@test bra != basisstate(b, 1)
+@test bra != basisstate(b, [1,1])
 
 # Test copy
 psi1 = randstate(b1)
@@ -50,15 +50,15 @@ ket_b2 = randstate(b2)
 ket_b3 = randstate(b3)
 
 # Addition
-@test_throws DimensionMismatch bra_b1 + bra_b2
-@test_throws DimensionMismatch ket_b1 + ket_b2
+@test_throws QuantumOpticsBase.IncompatibleBases bra_b1 + bra_b2
+@test_throws QuantumOpticsBase.IncompatibleBases ket_b1 + ket_b2
 @test 1e-14 > D(bra_b1 + Bra(b1), bra_b1)
 @test 1e-14 > D(ket_b1 + Ket(b1), ket_b1)
 @test 1e-14 > D(bra_b1 + dagger(ket_b1), dagger(ket_b1) + bra_b1)
 
 # Subtraction
-@test_throws DimensionMismatch bra_b1 - bra_b2
-@test_throws DimensionMismatch ket_b1 - ket_b2
+@test_throws QuantumOpticsBase.IncompatibleBases bra_b1 - bra_b2
+@test_throws QuantumOpticsBase.IncompatibleBases ket_b1 - ket_b2
 @test 1e-14 > D(bra_b1 - Bra(b1), bra_b1)
 @test 1e-14 > D(ket_b1 - Ket(b1), ket_b1)
 @test 1e-14 > D(bra_b1 - dagger(ket_b1), -dagger(ket_b1) + bra_b1)
@@ -76,12 +76,12 @@ ket_b3 = randstate(b3)
 @test 1e-14 > D((bra_b1 ⊗ bra_b2) ⊗ bra_b3, bra_b1 ⊗ (bra_b2 ⊗ bra_b3))
 
 ket_b1b2 = ket_b1 ⊗ ket_b2
-shape = (ket_b1b2.basis.shape...,)
+shape = length.(bases(ket_b1b2.basis))
 idx = LinearIndices(shape)[2, 3]
 @test ket_b1b2.data[idx] == ket_b1.data[2]*ket_b2.data[3]
 ket_b1b2b3 = ket_b1 ⊗ ket_b2 ⊗ ket_b3
 @test ket_b1b2b3 == tensor(ket_b1, ket_b2, ket_b3)
-shape = (ket_b1b2b3.basis.shape...,)
+shape = length.(bases(ket_b1b2b3.basis))
 idx = LinearIndices(shape)[1, 4, 3]
 @test ket_b1b2b3.data[idx] == ket_b1.data[1]*ket_b2.data[4]*ket_b3.data[3]
 

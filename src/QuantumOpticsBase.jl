@@ -5,13 +5,17 @@ import LinearAlgebra: mul!, rmul!
 import RecursiveArrayTools
 
 import QuantumInterface: dagger, directsum, ⊕, dm, embed, nsubsystems, expect, identityoperator, identitysuperoperator,
-        permutesystems, projector, ptrace, reduced, tensor, ⊗, variance, apply!, basis, AbstractSuperOperator
+        permutesystems, projector, ptrace, reduced, tensor, ⊗, variance, apply!,
+        basis, bases
+
+import QuantumInterface: Basis, GenericBasis, CompositeBasis, IncompatibleBases,
+        OperatorBasis, KetBraBasis
 
 # index helpers
 import QuantumInterface: complement, remove, shiftremove, reducedindices!, check_indices, check_sortedindices, check_embed_indices
 
-export Basis, GenericBasis, CompositeBasis, basis,
-        tensor, ⊗, permutesystems, @samebases,
+export Basis, GenericBasis, CompositeBasis, basis, bases,
+        tensor, ⊗, permutesystems,
         #states
                 StateVector, Bra, Ket, basisstate, sparsebasisstate, norm,
                 dagger, normalize, normalize!,
@@ -71,32 +75,33 @@ export Basis, GenericBasis, CompositeBasis, basis,
         #apply
                 apply!
 
-include("bases.jl")
 include("states.jl")
 include("operators.jl")
-include("operators_dense.jl")
-include("sparsematrix.jl")
-include("operators_sparse.jl")
-include("operators_lazysum.jl")
-include("operators_lazyproduct.jl")
-include("operators_lazytensor.jl")
-include("time_dependent_operator.jl")
-include("states_lazyket.jl")
-include("superoperators.jl")
+#include("operators_dense.jl")
+#include("sparsematrix.jl")
+#include("operators_sparse.jl")
+#include("operators_lazysum.jl")
+#include("operators_lazyproduct.jl")
+#include("operators_lazytensor.jl")
+#include("time_dependent_operator.jl")
+#include("states_lazyket.jl")
+#include("superoperators.jl")
 include("spin.jl")
-include("fock.jl")
-include("charge.jl")
+#include("fock.jl")
+#include("charge.jl")
+
+import QuantumInterface: AbstractOperator, FockBasis
 include("state_definitions.jl")
-include("subspace.jl")
-include("particle.jl")
-include("nlevel.jl")
-include("manybody.jl")
-include("transformations.jl")
-include("pauli.jl")
-include("metrics.jl")
-include("spinors.jl")
-include("phasespace.jl")
-include("printing.jl")
-include("apply.jl")
+#include("subspace.jl")
+#include("particle.jl")
+#include("nlevel.jl")
+#include("manybody.jl")
+#include("transformations.jl")
+#include("pauli.jl")
+#include("metrics.jl")
+#include("spinors.jl")
+#include("phasespace.jl")
+#include("printing.jl")
+#include("apply.jl")
 
 end # module

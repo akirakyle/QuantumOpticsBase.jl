@@ -2,9 +2,9 @@ import Base: ==, *, /, +, -, Broadcast
 import SparseArrays: sparse
 import FastExpm: fastExpm
 
-const SparseOpPureType{BL,BR} = Operator{BL,BR,<:SparseMatrixCSC}
-const SparseOpAdjType{BL,BR} = Operator{BL,BR,<:Adjoint{<:Number,<:SparseMatrixCSC}}
-const SparseOpType{BL,BR} = Union{SparseOpPureType{BL,BR},SparseOpAdjType{BL,BR}}
+const SparseOpPureType{B} = Operator{B,<:SparseMatrixCSC}
+const SparseOpAdjType{B} = Operator{B,<:Adjoint{<:Number,<:SparseMatrixCSC}}
+const SparseOpType{B} = Union{SparseOpPureType{B},SparseOpAdjType{B}}
 
 """
     SparseOperator(b1[, b2, data])
@@ -13,16 +13,17 @@ Sparse array implementation of Operator.
 
 The matrix is stored as the julia built-in type `SparseMatrixCSC` in the `data` field.
 """
-SparseOperator(b1::Basis, b2::Basis, data) = Operator(b1, b2, SparseMatrixCSC(data))
-SparseOperator(b1::Basis, b2::Basis, data::SparseMatrixCSC) = Operator(b1, b2, data)
-SparseOperator(b::Basis, data) = SparseOperator(b, b, data)
-SparseOperator(op::DataOperator) = SparseOperator(op.basis_l, op.basis_r, op.data)
-SparseOperator(::Type{T},b1::Basis,b2::Basis) where T = SparseOperator(b1,b2,spzeros(T,length(b1),length(b2)))
-SparseOperator(::Type{T},b::Basis) where T = SparseOperator(b,b,spzeros(T,length(b),length(b)))
-SparseOperator(b1::Basis, b2::Basis) = SparseOperator(ComplexF64, b1, b2)
-SparseOperator(b::Basis) = SparseOperator(ComplexF64, b, b)
+SparseOperator(b::OperatorBasis, data) = Operator(b, SparseMatrixCSC(data))
+SparseOperator(b::OperatorBasis, data::SparseMatrixCSC) = Operator(b, data)
+SparseOperator(b::Basis, data) = SparseOperator(KetBraBasis(b, b), data)
+SparseOperator(op::Operator) = SparseOperator(op.basis, op.data)
+# FIXME
+#SparseOperator(::Type{T},b1::Basis,b2::Basis) where T = SparseOperator(b1,b2,spzeros(T,length(b1),length(b2)))
+#SparseOperator(::Type{T},b::Basis) where T = SparseOperator(b,b,spzeros(T,length(b),length(b)))
+#SparseOperator(b1::Basis, b2::Basis) = SparseOperator(ComplexF64, b1, b2)
+#SparseOperator(b::Basis) = SparseOperator(ComplexF64, b, b)
 
-sparse(a::DataOperator) = Operator(a.basis_l, a.basis_r, sparse(a.data))
+sparse(a::Operator) = Operator(a.basis, sparse(a.data))
 
 function ptrace(op::SparseOpPureType, indices)
     check_ptrace_arguments(op, indices)
@@ -34,6 +35,7 @@ function ptrace(op::SparseOpPureType, indices)
 end
 
 function expect(op::SparseOpPureType{B1,B2}, state::Operator{B2,B2}) where {B1,B2}
+function expect(op::Operator{KetBraBasis{B,B}}, state::Operator{KetBraBasis{B,B}}) where {B}
     check_samebases(op, state)
     result = zero(promote_type(eltype(op),eltype(state)))
     @inbounds for colindex = 1:op.data.n
@@ -80,13 +82,13 @@ const EyeOpPureType{BL,BR} = Operator{BL,BR,<:Eye}
 const EyeOpAdjType{BL,BR} = Operator{BL,BR,<:Adjoint{<:Number,<:Eye}}
 const EyeOpType{BL,BR} = Union{EyeOpPureType{BL,BR},EyeOpAdjType{BL,BR}}
 
-identityoperator(::Type{T}, ::Type{S}, b1::Basis, b2::Basis) where {T<:DataOperator,S<:Number} =
+identityoperator(::Type{T}, ::Type{S}, b1::Basis, b2::Basis) where {T<:Operator,S<:Number} =
     Operator(b1, b2, Eye{S}(length(b1), length(b2)))
-identityoperator(::Type{T}, ::Type{S}, b::Basis) where {T<:DataOperator,S<:Number} =
+identityoperator(::Type{T}, ::Type{S}, b::Basis) where {T<:Operator,S<:Number} =
     Operator(b, b, Eye{S}(length(b)))
 
-identityoperator(::Type{T}, b1::Basis, b2::Basis) where T<:Number = identityoperator(DataOperator, T, b1, b2) # XXX This is purposeful type piracy over QuantumInterface, that hardcodes the use of QuantumOpticsBase.DataOperator in identityoperator. Also necessary for backward compatibility.
-identityoperator(::Type{T}, b::Basis) where T<:Number = identityoperator(DataOperator, T, b)
+identityoperator(::Type{T}, b1::Basis, b2::Basis) where T<:Number = identityoperator(Operator, T, b1, b2) # XXX This is purposeful type piracy over QuantumInterface, that hardcodes the use of QuantumOpticsBase.DataOperator in identityoperator. Also necessary for backward compatibility.
+identityoperator(::Type{T}, b::Basis) where T<:Number = identityoperator(Operator, T, b)
 
 """
     diagonaloperator(b::Basis)

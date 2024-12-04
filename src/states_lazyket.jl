@@ -7,14 +7,13 @@ The subkets are stored in the `kets` field.
 The main purpose of such a ket are simple computations for large product states, such as expectation values.
 It's used to compute numeric initial states in QuantumCumulants.jl (see QuantumCumulants.initial_values).
 """
-mutable struct LazyKet{B,T} <: AbstractKet{B,T}
+mutable struct LazyKet{B,T} <: AbstractKet{B}
     basis::B
     kets::T
-    function LazyKet(b::B, kets::T) where {B<:CompositeBasis,T<:Tuple}
-        N = length(b.bases)
-        for n=1:N
-            @assert isa(kets[n], Ket)
-            @assert kets[n].basis == b.bases[n]
+    function LazyKet(b::B, kets::T) where {B<:CompositeBasis,T<:Tuple{Varg{Ket}}}
+        @assert nsubsystems(b) == length(kets)
+        for n=1:nsubsystems(b)
+            @assert kets[n].basis == bases(b)[n]
         end
         new{B,T}(b, kets)
     end
@@ -60,7 +59,7 @@ function normalize(state::LazyKet)
 end
 
 # expect
-function expect(op::LazyTensor{B, B}, state::LazyKet{B}) where B <: Basis
+function expect(op::LazyTensor{KetBraBasis{B,B}}, state::LazyKet{B}) where {B<:Basis}
     check_samebases(op); check_samebases(op.basis_l, state.basis)
     ops = op.operators
     inds = op.indices

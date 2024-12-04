@@ -7,7 +7,7 @@ Pauli ``σ_x`` operator for the given Spin basis.
 """
 function sigmax(::Type{T}, b::SpinBasis) where T
     N = length(b)
-    diag = T[complex(sqrt(real((b.spinnumber + 1)*2*a - a*(a+1)))) for a=1:N-1]
+    diag = T[complex(sqrt(real((spinnumber(b) + 1)*2*a - a*(a+1)))) for a=1:N-1]
     data = spdiagm(1 => diag, -1 => diag)
     SparseOperator(b, data)
 end
@@ -20,7 +20,7 @@ Pauli ``σ_y`` operator for the given Spin basis.
 """
 function sigmay(::Type{T}, b::SpinBasis) where T
     N = length(b)
-    diag = T[1im*complex(sqrt(real((b.spinnumber + 1)*2*a - a*(a+1)))) for a=1:N-1]
+    diag = T[1im*complex(sqrt(real((spinnumber(b) + 1)*2*a - a*(a+1)))) for a=1:N-1]
     data = spdiagm(-1 => diag, 1 => -diag)
     SparseOperator(b, data)
 end
@@ -33,7 +33,7 @@ Pauli ``σ_z`` operator for the given Spin basis.
 """
 function sigmaz(::Type{T}, b::SpinBasis) where T
     N = length(b)
-    diag = T[complex(2*m) for m=b.spinnumber:-1:-b.spinnumber]
+    diag = T[complex(2*m) for m=spinnumber(b):-1:-spinnumber(b)]
     data = spdiagm(0 => diag)
     SparseOperator(b, data)
 end
@@ -46,8 +46,8 @@ Raising operator ``σ_+`` for the given Spin basis.
 """
 function sigmap(::Type{T}, b::SpinBasis) where T
     N = length(b)
-    S = (b.spinnumber + 1)*b.spinnumber
-    diag = T[complex(sqrt(float(S - m*(m+1)))) for m=b.spinnumber-1:-1:-b.spinnumber]
+    S = (spinnumber(b) + 1)*spinnumber(b)
+    diag = T[complex(sqrt(float(S - m*(m+1)))) for m=spinnumber(b)-1:-1:-spinnumber(b)]
     data = spdiagm(1 => diag)
     SparseOperator(b, data)
 end
@@ -60,8 +60,8 @@ Lowering operator ``σ_-`` for the given Spin basis.
 """
 function sigmam(::Type{T}, b::SpinBasis) where T
     N = length(b)
-    S = (b.spinnumber + 1)*b.spinnumber
-    diag = T[complex(sqrt(float(S - m*(m-1)))) for m=b.spinnumber:-1:-b.spinnumber+1]
+    S = (spinnumber(b) + 1)*spinnumber(b)
+    diag = T[complex(sqrt(float(S - m*(m-1)))) for m=spinnumber(b):-1:-spinnumber(b)+1]
     data = spdiagm(-1 => diag)
     SparseOperator(b, data)
 end
@@ -81,7 +81,7 @@ spinup(b::SpinBasis) = spinup(ComplexF64, b)
 
 Spin down state for the given Spin basis.
 """
-spindown(::Type{T}, b::SpinBasis) where T = basisstate(T, b, b.shape[1])
+spindown(::Type{T}, b::SpinBasis) where T = basisstate(T, b, length(b))
 spindown(b::SpinBasis) = spindown(ComplexF64, b)
 
 

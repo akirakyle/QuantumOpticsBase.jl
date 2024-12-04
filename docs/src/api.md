@@ -145,14 +145,6 @@ QuantumOpticsBase.check_samebases
 ```
 
 ```@docs
-QuantumOpticsBase.multiplicable
-```
-
-```@docs
-QuantumOpticsBase.check_multiplicable
-```
-
-```@docs
 QuantumOpticsBase.basis
 ```
 

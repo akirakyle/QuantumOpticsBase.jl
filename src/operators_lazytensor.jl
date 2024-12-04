@@ -11,21 +11,17 @@ must be sorted.
 Additionally, a factor is stored in the `factor` field which allows for fast
 multiplication with numbers.
 """
-mutable struct LazyTensor{BL,BR,F,I,T} <: LazyOperator{BL,BR}
-    basis_l::BL
-    basis_r::BR
+mutable struct LazyTensor{B<:OperatorBasis,F,I,T<:Tuple} <: LazyOperator{B}
+    basis::B
     factor::F
     indices::I
     operators::T
-    function LazyTensor(bl::BL, br::BR, indices::I, ops::T, factor::F=_default_factor(ops)) where {BL<:CompositeBasis,BR<:CompositeBasis,F,I,T<:Tuple}
-        N = length(bl.bases)
-        @assert N==length(br.bases)
-        check_indices(N, indices)
+    function LazyTensor(b::B, indices::I, ops::T, factor::F=_default_factor(ops)) where {B<:OperatorBasis,F,I,T<:Tuple{Varg{AbstractOperator}}}
+        check_indices(nsubsystems(b), indices)
         @assert length(indices) == length(ops)
         @assert issorted(indices)
         for n=1:length(indices)
-            @assert isa(ops[n], AbstractOperator)
-            @assert ops[n].basis_l == bl.bases[indices[n]]
+            @assert basis(ops[n]) == bl.bases[indices[n]]
             @assert ops[n].basis_r == br.bases[indices[n]]
         end
         F_ = promote_type(F, mapreduce(eltype, promote_type, ops; init=F))

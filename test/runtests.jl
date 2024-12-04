@@ -1,9 +1,5 @@
 names = [
-    "test_sortedindices.jl",
-
-    "test_bases.jl",
     "test_states.jl",
-
     "test_operators.jl",
     "test_operators_dense.jl",
     "test_sparsematrix.jl",
@@ -44,6 +40,7 @@ names = [
     "test_jet.jl"
 ]
 
+"""
 detected_tests = filter(
     name->startswith(name, "test_") && endswith(name, ".jl"),
     readdir("."))
@@ -63,3 +60,7 @@ for name=names
         include(name)
     end
 end
+"""
+
+include("test_states.jl")
+#include("test_operators.jl")

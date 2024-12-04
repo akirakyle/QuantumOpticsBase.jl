@@ -1,3 +1,5 @@
+ManyBodyBasis(onebodybasis::B, occupations::Vector{T}) where {B,T} = ManyBodyBasis(onebodybasis, SortedVector(occupations))
+
 struct SortedVector{T, OT} <: AbstractVector{T}
     sortedvector::Vector{T}
     order::OT
@@ -27,28 +29,6 @@ end
 state_index(occupations::AbstractVector{T}, occ::T) where {T} = findfirst(==(occ), occupations)
 state_index(occupations::AbstractVector{T}, occ::Base.RefValue{T}) where {T} = state_index(occupations, occ[])
 state_index(occupations::AbstractVector{T}, occ::Any) where {T} = state_index(occupations, convert(T, occ))
-
-"""
-    ManyBodyBasis(b, occupations)
-
-Basis for a many body system.
-
-The basis has to know the associated one-body basis `b` and which occupation states
-should be included. The occupations_hash is used to speed up checking if two
-many-body bases are equal.
-"""
-struct ManyBodyBasis{B,O,UT} <: Basis
-    shape::Int
-    onebodybasis::B
-    occupations::O
-    occupations_hash::UT
-    function ManyBodyBasis{B,O}(onebodybasis::B, occupations::O) where {B,O<:AbstractVector}
-        h = hash(hash.(occupations))
-        new{B,O,typeof(h)}(length(occupations), onebodybasis, occupations, h)
-    end
-end
-ManyBodyBasis(onebodybasis::B, occupations::O) where {B,O} = ManyBodyBasis{B,O}(onebodybasis, occupations)
-ManyBodyBasis(onebodybasis::B, occupations::Vector{T}) where {B,T} = ManyBodyBasis(onebodybasis, SortedVector(occupations))
 
 allocate_buffer(occ) = similar(occ)
 allocate_buffer(mb::ManyBodyBasis) = allocate_buffer(first(mb.occupations))
@@ -88,8 +68,6 @@ end
 bosonstates(T::Type, Nmodes::Int, Nparticles::Vector{Int}) = union((bosonstates(T, Nmodes, N) for N in Nparticles)...)
 bosonstates(T::Type, onebodybasis::Basis, Nparticles) = bosonstates(T, length(onebodybasis), Nparticles)
 bosonstates(arg1, arg2) = bosonstates(OccupationNumbers{BosonStatistics,Int}, arg1, arg2)
-
-==(b1::ManyBodyBasis, b2::ManyBodyBasis) = b1.occupations_hash == b2.occupations_hash && b1.onebodybasis == b2.onebodybasis
 
 """
     basisstate([T=ComplexF64,] mb::ManyBodyBasis, occupation::Vector)
