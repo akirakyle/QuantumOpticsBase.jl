@@ -35,6 +35,7 @@ export Basis, GenericBasis, CompositeBasis, basis,
                 AbstractTimeDependentOperator, TimeDependentSum, set_time!,
                 current_time, time_shift, time_stretch, time_restrict, static_operator,
         #superoperators
+                KetBraBasis, ChoiRefSysBasis, ChoiOutSysBasis,
                 SuperOperator, DenseSuperOperator, DenseSuperOpType,
                 SparseSuperOperator, SparseSuperOpType, spre, spost, sprepost, liouvillian,
                 identitysuperoperator,

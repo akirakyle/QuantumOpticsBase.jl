@@ -6,10 +6,11 @@ import QuantumOpticsBase: ChoiState # Remove when ChoiState is publicly exported
 @testset "superoperators" begin
 
 # Test creation
-b = GenericBasis(3)
-@test_throws DimensionMismatch DenseSuperOperator((b, b), (b, b), zeros(ComplexF64, 3, 3))
-@test_throws DimensionMismatch SparseSuperOperator((b, b), (b, b), spzeros(ComplexF64, 3, 3))
-@test_throws DimensionMismatch ChoiState((b, b), (b, b), zeros(ComplexF64, 3, 3))
+b = KetBraBasis(GenericBasis(3))
+@test_throws DimensionMismatch DenseSuperOperator(b, b, zeros(ComplexF64, 3, 3))
+@test_throws DimensionMismatch SparseSuperOperator(b, b, spzeros(ComplexF64, 3, 3))
+b = ChoiRefSysBasis(GenericBasis(3))⊗ChoiOutSysBasis(GenericBasis(3))
+@test_throws DimensionMismatch ChoiState(b, b, zeros(ComplexF64, 3, 3))
 
 # Test copy, sparse and dense
 b1 = GenericBasis(2)
@@ -17,7 +18,7 @@ b2 = GenericBasis(7)
 b3 = GenericBasis(5)
 b4 = GenericBasis(3)
 
-s = DenseSuperOperator((b1, b2), (b3, b4))
+s = DenseSuperOperator(KetBraBasis(b1, b2), KetBraBasis(b3, b4))
 s_ = dense(s)
 s_.data[1,1] = 1
 @test s.data[1,1] == 0
@@ -25,7 +26,7 @@ s_sparse = sparse(s_)
 @test isa(s_sparse, SparseSuperOpType)
 @test s_sparse.data[1,1] == 1
 
-s = SparseSuperOperator((b1, b2), (b3, b4))
+s = SparseSuperOperator(KetBraBasis(b1, b2), KetBraBasis(b3, b4))
 s_ = sparse(s)
 s_.data[1,1] = 1
 @test s.data[1,1] == 0
@@ -51,76 +52,76 @@ b2 = GenericBasis(5)
 b3 = GenericBasis(5)
 b4 = GenericBasis(3)
 
-d1 = DenseSuperOperator((b1, b2), (b3, b4))
-d2 = DenseSuperOperator((b3, b4), (b1, b2))
-s1 = SparseSuperOperator((b1, b2), (b3, b4))
-s2 = SparseSuperOperator((b3, b4), (b1, b2))
+d1 = DenseSuperOperator(KetBraBasis(b1, b2), KetBraBasis(b3, b4))
+d2 = DenseSuperOperator(KetBraBasis(b3, b4), KetBraBasis(b1, b2))
+s1 = SparseSuperOperator(KetBraBasis(b1, b2), KetBraBasis(b3, b4))
+s2 = SparseSuperOperator(KetBraBasis(b3, b4), KetBraBasis(b1, b2))
 
 x = d1*d2
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == x.basis_r == (b1, b2)
+@test x.basis_l == x.basis_r == KetBraBasis(b1, b2)
 
 x = s1*s2
 @test isa(x, SparseSuperOpType)
-@test x.basis_l == x.basis_r == (b1, b2)
+@test x.basis_l == x.basis_r == KetBraBasis(b1, b2)
 
 x = d1*s2
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == x.basis_r == (b1, b2)
+@test x.basis_l == x.basis_r == KetBraBasis(b1, b2)
 
 x = s1*d2
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == x.basis_r == (b1, b2)
+@test x.basis_l == x.basis_r == KetBraBasis(b1, b2)
 
 x = d1*3
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = 2.5*s1
 @test isa(x, SparseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = d1 + d1
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = s1 + s1
 @test isa(x, SparseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = d1 + s1
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = d1 - d1
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = s1 - s1
 @test isa(x, SparseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = d1 - s1
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = -d1
 @test isa(x, DenseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 x = -s1
 @test isa(x, SparseSuperOpType)
-@test x.basis_l == (b1, b2)
-@test x.basis_r == (b3, b4)
+@test x.basis_l == KetBraBasis(b1, b2)
+@test x.basis_r == KetBraBasis(b3, b4)
 
 # TODO: Clean-up this part
 ωc = 1.2

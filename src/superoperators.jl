@@ -1,32 +1,30 @@
-import QuantumInterface: AbstractSuperOperator
+import QuantumInterface: KetBraBasis, ChoiRefSysBasis, ChoiOutSysBasis
 import FastExpm: fastExpm
 
-abstract type BLRSuperOperator{BL,BR} <: AbstractSuperOperator end
-
 """
-    SuperOperator <: AbstractSuperOperator
+    SuperOperator <: AbstractOperator
 
 SuperOperator stored as representation, e.g. as a Matrix.
 """
-mutable struct SuperOperator{B1,B2,T} <: BLRSuperOperator{B1,B2}
-    basis_l::B1
-    basis_r::B2
+mutable struct SuperOperator{T} <: AbstractOperator
+    basis_l::KetBraBasis
+    basis_r::KetBraBasis
     data::T
-    function SuperOperator{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
-        if (length(basis_l) != 2 || length(basis_r) != 2 ||
-            length(basis_l[1])*length(basis_l[2]) != size(data, 1) ||
-            length(basis_r[1])*length(basis_r[2]) != size(data, 2))
-            throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(length.(basis_l)), $(length.(basis_r))"))
+    function SuperOperator{T}(basis_l::KetBraBasis, basis_r::KetBraBasis, data::T) where {T}
+        if (length(basis_l) != size(data, 1) || length(basis_r) != size(data, 2))
+            throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(size(basis_l)), $(size(basis_r))"))
         end
         new(basis_l, basis_r, data)
     end
 end
-SuperOperator{BL,BR}(b1::BL,b2::BR,data::T) where {BL,BR,T} = SuperOperator{BL,BR,T}(b1,b2,data)
-SuperOperator(b1::BL,b2::BR,data::T) where {BL,BR,T} = SuperOperator{BL,BR,T}(b1,b2,data)
+SuperOperator(b1,b2,data::T) where {T} = SuperOperator{T}(b1,b2,data)
 SuperOperator(b,data) = SuperOperator(b,b,data)
 
-const DenseSuperOpType{BL,BR} = SuperOperator{BL,BR,<:Matrix}
-const SparseSuperOpType{BL,BR} = SuperOperator{BL,BR,<:SparseMatrixCSC}
+basis_l(op::SuperOperator) = op.basis_l
+basis_r(op::SuperOperator) = op.basis_r
+
+const DenseSuperOpType = SuperOperator{<:Matrix}
+const SparseSuperOpType = SuperOperator{<:SparseMatrixCSC}
 
 """
     DenseSuperOperator(b1[, b2, data])
@@ -36,9 +34,7 @@ SuperOperator stored as dense matrix.
 """
 DenseSuperOperator(basis_l,basis_r,data) = SuperOperator(basis_l, basis_r, Matrix(data))
 function DenseSuperOperator(::Type{T}, basis_l, basis_r) where T
-    Nl = length(basis_l[1])*length(basis_l[2])
-    Nr = length(basis_r[1])*length(basis_r[2])
-    data = zeros(T, Nl, Nr)
+    data = zeros(T, length(basis_l), length(basis_r))
     DenseSuperOperator(basis_l, basis_r, data)
 end
 DenseSuperOperator(basis_l, basis_r) = DenseSuperOperator(ComplexF64, basis_l, basis_r)
@@ -55,9 +51,7 @@ SuperOperator stored as sparse matrix.
 SparseSuperOperator(basis_l, basis_r, data) = SuperOperator(basis_l, basis_r, sparse(data))
 
 function SparseSuperOperator(::Type{T}, basis_l, basis_r) where T
-    Nl = length(basis_l[1])*length(basis_l[2])
-    Nr = length(basis_r[1])*length(basis_r[2])
-    data = spzeros(T, Nl, Nr)
+    data = spzeros(T, length(basis_l), length(basis_r))
     SparseSuperOperator(basis_l, basis_r, data)
 end
 SparseSuperOperator(basis_l, basis_r) = SparseSuperOperator(ComplexF64, basis_l, basis_r)
@@ -69,40 +63,37 @@ Base.copy(a::T) where {T<:SuperOperator} = T(a.basis_l, a.basis_r, copy(a.data))
 dense(a::SuperOperator) = DenseSuperOperator(a.basis_l, a.basis_r, a.data)
 sparse(a::SuperOperator) = SuperOperator(a.basis_l, a.basis_r, sparse(a.data))
 
-==(a::SuperOperator{B1,B2}, b::SuperOperator{B1,B2}) where {B1,B2} = (samebases(a,b) && a.data == b.data)
-==(a::SuperOperator, b::SuperOperator) = false
+==(a::SuperOperator, b::SuperOperator) = (addible(a,b) && a.data == b.data)
 
-Base.length(a::SuperOperator) = length(a.basis_l[1])*length(a.basis_l[2])*length(a.basis_r[1])*length(a.basis_r[2])
-samebases(a::SuperOperator, b::SuperOperator) = samebases(a.basis_l[1], b.basis_l[1]) && samebases(a.basis_l[2], b.basis_l[2]) &&
-                                                      samebases(a.basis_r[1], b.basis_r[1]) && samebases(a.basis_r[2], b.basis_r[2])
-multiplicable(a::SuperOperator, b::SuperOperator) = multiplicable(a.basis_r[1], b.basis_l[1]) && multiplicable(a.basis_r[2], b.basis_l[2])
-multiplicable(a::SuperOperator, b::AbstractOperator) = multiplicable(a.basis_r[1], b.basis_l) && multiplicable(a.basis_r[2], b.basis_r)
+Base.length(a::SuperOperator) = length(a.basis_l)*length(a.basis_r)
 
+vec(op::Operator) = Ket(KetBraBasis(basis_l(op), basis_r(op)), reshape(op.data, length(op.data)))
 
 # Arithmetic operations
-function *(a::SuperOperator{B1,B2}, b::Operator{BL,BR}) where {BL,BR,B1,B2<:Tuple{BL,BR}}
+#*(a::SuperOperator, b::Operator) = a*vec(b)
+# TODO unify this and multiplicitation for DataOperators
+function *(a::SuperOperator, b::Operator)
+    check_multiplicable(a,vec(b))
     data = a.data*reshape(b.data, length(b.data))
-    return Operator(a.basis_l[1], a.basis_l[2], reshape(data, length(a.basis_l[1]), length(a.basis_l[2])))
+    return Operator(basis_l(a.basis_l), basis_r(a.basis_l),
+                    reshape(data, length(basis_l(a.basis_l)), length(basis_r(a.basis_l))))
 end
 
-function *(a::SuperOperator{B1,B2}, b::SuperOperator{B2,B3}) where {B1,B2,B3}
-    return SuperOperator{B1,B3}(a.basis_l, b.basis_r, a.data*b.data)
-end
+*(a::SuperOperator, b::SuperOperator) = (check_multiplicable(a,b);
+                                         SuperOperator(a.basis_l, b.basis_r, a.data*b.data))
 
 *(a::SuperOperator, b::Number) = SuperOperator(a.basis_l, a.basis_r, a.data*b)
 *(a::Number, b::SuperOperator) = b*a
 
 /(a::SuperOperator, b::Number) = SuperOperator(a.basis_l, a.basis_r, a.data ./ b)
 
-+(a::SuperOperator{B1,B2}, b::SuperOperator{B1,B2}) where {B1,B2} = SuperOperator{B1,B2}(a.basis_l, a.basis_r, a.data+b.data)
-+(a::SuperOperator, b::SuperOperator) = throw(IncompatibleBases())
++(a::SuperOperator, b::SuperOperator) = (check_addible(a,b); SuperOperator(a.basis_l, a.basis_r, a.data+b.data))
 
--(a::SuperOperator{B1,B2}, b::SuperOperator{B1,B2}) where {B1,B2} = SuperOperator{B1,B2}(a.basis_l, a.basis_r, a.data-b.data)
+-(a::SuperOperator, b::SuperOperator) = (check_addible(a,b); SuperOperator(a.basis_l, a.basis_r, a.data-b.data))
 -(a::SuperOperator) = SuperOperator(a.basis_l, a.basis_r, -a.data)
--(a::SuperOperator, b::SuperOperator) = throw(IncompatibleBases())
 
 identitysuperoperator(b::Basis) =
-    SuperOperator((b,b), (b,b), Eye{ComplexF64}(length(b)^2))
+    SuperOperator(KetBraBasis(b,b), KetBraBasis(b,b), Eye{ComplexF64}(length(b)^2))
 
 identitysuperoperator(op::DenseSuperOpType) = 
     SuperOperator(op.basis_l, op.basis_r, Matrix(one(eltype(op.data))I, size(op.data)))
@@ -128,10 +119,10 @@ For operators ``A``, ``B`` the relation
 holds. `op` can be a dense or a sparse operator.
 """
 function spre(op::AbstractOperator)
-    if !samebases(op.basis_l, op.basis_r)
+    if basis_l(op) != basis_r(op)
         throw(ArgumentError("It's not clear what spre of a non-square operator should be. See issue #113"))
     end
-    SuperOperator((op.basis_l, op.basis_l), (op.basis_r, op.basis_r), tensor(op, identityoperator(op)).data)
+    SuperOperator(KetBraBasis(basis(op)), tensor(op, identityoperator(op)).data)
 end
 
 """
@@ -148,10 +139,10 @@ For operators ``A``, ``B`` the relation
 holds. `op` can be a dense or a sparse operator.
 """
 function spost(op::AbstractOperator)
-    if !samebases(op.basis_l, op.basis_r)
+    if basis_l(op) != basis_r(op)
         throw(ArgumentError("It's not clear what spost of a non-square operator should be. See issue #113"))
     end
-    SuperOperator((op.basis_r, op.basis_r), (op.basis_l, op.basis_l), kron(permutedims(op.data), identityoperator(op).data))
+    SuperOperator(KetBraBasis(basis(op)), kron(permutedims(op.data), identityoperator(op).data))
 end
 
 """
@@ -167,7 +158,9 @@ For operators ``A``, ``B``, ``C`` the relation
 
 holds. `A` ond `B` can be dense or a sparse operators.
 """
-sprepost(A::AbstractOperator, B::AbstractOperator) = SuperOperator((A.basis_l, B.basis_r), (A.basis_r, B.basis_l), kron(permutedims(B.data), A.data))
+sprepost(A::AbstractOperator, B::AbstractOperator) =
+    SuperOperator(KetBraBasis(A.basis_l, B.basis_r), KetBraBasis(A.basis_r, B.basis_l),
+                  kron(permutedims(B.data), A.data))
 
 function _check_input(H::BLROperator{B1,B2}, J::Vector, Jdagger::Vector, rates) where {B1,B2}
     for j=J
@@ -263,12 +256,12 @@ Base.ndims(::Type{<:SuperOperator}) = 2
 Base.broadcastable(A::SuperOperator) = A
 
 # Custom broadcasting styles
-struct SuperOperatorStyle{BL,BR} <: Broadcast.BroadcastStyle end
+struct SuperOperatorStyle <: Broadcast.BroadcastStyle end
 # struct DenseSuperOperatorStyle{BL,BR} <: SuperOperatorStyle{BL,BR} end
 # struct SparseSuperOperatorStyle{BL,BR} <: SuperOperatorStyle{BL,BR} end
 
 # Style precedence rules
-Broadcast.BroadcastStyle(::Type{<:SuperOperator{BL,BR}}) where {BL,BR} = SuperOperatorStyle{BL,BR}()
+Broadcast.BroadcastStyle(::Type{<:SuperOperator}) = SuperOperatorStyle()
 # Broadcast.BroadcastStyle(::Type{<:SparseSuperOperator{BL,BR}}) where {BL,BR} = SparseSuperOperatorStyle{BL,BR}()
 # Broadcast.BroadcastStyle(::DenseSuperOperatorStyle{B1,B2}, ::SparseSuperOperatorStyle{B1,B2}) where {B1,B2} = DenseSuperOperatorStyle{B1,B2}()
 # Broadcast.BroadcastStyle(::DenseSuperOperatorStyle{B1,B2}, ::DenseSuperOperatorStyle{B3,B4}) where {B1,B2,B3,B4} = throw(IncompatibleBases())
@@ -276,11 +269,11 @@ Broadcast.BroadcastStyle(::Type{<:SuperOperator{BL,BR}}) where {BL,BR} = SuperOp
 # Broadcast.BroadcastStyle(::DenseSuperOperatorStyle{B1,B2}, ::SparseSuperOperatorStyle{B3,B4}) where {B1,B2,B3,B4} = throw(IncompatibleBases())
 
 # Out-of-place broadcasting
-@inline function Base.copy(bc::Broadcast.Broadcasted{Style,Axes,F,Args}) where {BL,BR,Style<:SuperOperatorStyle{BL,BR},Axes,F,Args<:Tuple}
+@inline function Base.copy(bc::Broadcast.Broadcasted{Style,Axes,F,Args}) where {Style<:SuperOperatorStyle,Axes,F,Args<:Tuple}
     bcf = Broadcast.flatten(bc)
     bl,br = find_basis(bcf.args)
     bc_ = Broadcasted_restrict_f(bcf.f, bcf.args, axes(bcf))
-    return SuperOperator{BL,BR}(bl, br, copy(bc_))
+    return SuperOperator(bl, br, copy(bc_))
 end
 # @inline function Base.copy(bc::Broadcast.Broadcasted{Style,Axes,F,Args}) where {BL,BR,Style<:SparseSuperOperatorStyle{BL,BR},Axes,F,Args<:Tuple}
 #     bcf = Broadcast.flatten(bc)
@@ -297,10 +290,10 @@ function Broadcasted_restrict_f(f::BasicMathFunc, args::Tuple{Vararg{<:SuperOper
 end
 
 # In-place broadcasting
-@inline function Base.copyto!(dest::SuperOperator{BL,BR}, bc::Broadcast.Broadcasted{Style,Axes,F,Args}) where {BL,BR,Style<:SuperOperatorStyle{BL,BR},Axes,F,Args}
+@inline function Base.copyto!(dest::SuperOperator, bc::Broadcast.Broadcasted{Style,Axes,F,Args}) where {Style<:SuperOperatorStyle,Axes,F,Args}
     axes(dest) == axes(bc) || Base.Broadcast.throwdm(axes(dest), axes(bc))
     # Performance optimization: broadcast!(identity, dest, A) is equivalent to copyto!(dest, A) if indices match
-    if bc.f === identity && isa(bc.args, Tuple{<:SuperOperator{BL,BR}}) # only a single input argument to broadcast!
+    if bc.f === identity && isa(bc.args, Tuple{<:SuperOperator}) # only a single input argument to broadcast!
         A = bc.args[1]
         if axes(dest) == axes(A)
             return copyto!(dest, A)
@@ -312,40 +305,48 @@ end
     copyto!(dest.data, bc_)
     return dest
 end
-@inline Base.copyto!(A::SuperOperator{BL,BR},B::SuperOperator{BL,BR}) where {BL,BR} = (copyto!(A.data,B.data); A)
-@inline function Base.copyto!(dest::SuperOperator{B1,B2}, bc::Broadcast.Broadcasted{Style,Axes,F,Args}) where {
-        B1,B2,B3,
-        B4,Style<:SuperOperatorStyle{B3,B4},Axes,F,Args
-        }
-    throw(IncompatibleBases())
-end
+@inline Base.copyto!(A::SuperOperator,B::SuperOperator) = (copyto!(A.data,B.data); A)
+
+# TODO make sure copyto! checks basis appropriately and throws error
+#@inline function Base.copyto!(dest::SuperOperator, bc::Broadcast.Broadcasted{Style,Axes,F,Args}) where {Style<:SuperOperatorStyle,Axes,F,Args}
+#    throw(IncompatibleBases())
+#end
 
 """
-    ChoiState <: AbstractSuperOperator
+    ChoiState <: AbstractOperator
 
 Superoperator represented as a choi state.
+
+The convention is chosen such that the reference/input operators live in `(basis_l[1], basis_r[1])` while
+the output operators live in `(basis_r[2], basis_r[2])`.
 """
-mutable struct ChoiState{B1,B2,T} <: BLRSuperOperator{B1,B2}
-    basis_l::B1
-    basis_r::B2
+mutable struct ChoiState{T} <: AbstractOperator
+    basis_l::CompositeBasis
+    basis_r::CompositeBasis
     data::T
-    function ChoiState{BL,BR,T}(basis_l::BL, basis_r::BR, data::T) where {BL,BR,T}
-        if (length(basis_l) != 2 || length(basis_r) != 2 ||
-            length(basis_l[1])*length(basis_l[2]) != size(data, 1) ||
-            length(basis_r[1])*length(basis_r[2]) != size(data, 2))
-            throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(length.(basis_l)), $(length.(basis_r))"))
+    function ChoiState{T}(basis_l::CompositeBasis, basis_r::CompositeBasis, data::T) where {T}
+        if !(nsubsystems(basis_l) == nsubsystems(basis_r) == 2 &&
+            basis_l[1] isa ChoiRefSysBasis && basis_r[1] isa ChoiRefSysBasis &&
+            basis_l[2] isa ChoiOutSysBasis && basis_r[2] isa ChoiOutSysBasis)
+            throw(ArgumentError("Choi State must be have appropriate bases..."))
+        end
+        if (length(basis_l) != size(data, 1) || length(basis_r) != size(data, 2))
+            throw(DimensionMismatch("Tried to assign data of size $(size(data)) to Hilbert spaces of sizes $(size(basis_l)), $(size(basis_r))"))
         end
         new(basis_l, basis_r, data)
     end
 end
-ChoiState(b1::BL, b2::BR, data::T) where {BL,BR,T} = ChoiState{BL,BR,T}(b1, b2, data)
+ChoiState(b1, b2, data::T) where {T} = ChoiState{T}(b1, b2, data)
+
+basis_l(op::ChoiState) = op.basis_l
+basis_r(op::ChoiState) = op.basis_r
 
 dense(a::ChoiState) = ChoiState(a.basis_l, a.basis_r, Matrix(a.data))
 sparse(a::ChoiState) = ChoiState(a.basis_l, a.basis_r, sparse(a.data))
 dagger(a::ChoiState) = ChoiState(dagger(SuperOperator(a)))
 *(a::ChoiState, b::ChoiState) = ChoiState(SuperOperator(a)*SuperOperator(b))
 *(a::ChoiState, b::Operator) = SuperOperator(a)*b
-==(a::ChoiState, b::ChoiState) = (SuperOperator(a) == SuperOperator(b))
+==(a::ChoiState, b::ChoiState) = (addible(a,b); a.data == b.data)
 
 # reshape swaps within systems due to colum major ordering
 # https://docs.qojulia.org/quantumobjects/operators/#tensor_order
@@ -371,8 +372,23 @@ function _super_choi((r2, l2), (r1, l1), data::SparseMatrixCSC)
     return (l1, l2), (r1, r2), sparse(data)
 end
 
-ChoiState(op::SuperOperator) = ChoiState(_super_choi(op.basis_l, op.basis_r, op.data)...)
-SuperOperator(op::ChoiState) = SuperOperator(_super_choi(op.basis_l, op.basis_r, op.data)...)
+function ChoiState(op::SuperOperator)
+    #ChoiState(_super_choi(op.basis_l, op.basis_r, op.data)...)
+    bl = (basis_l(op.basis_l), basis_r(op.basis_l))
+    br = (basis_l(op.basis_r), basis_r(op.basis_r))
+    bl, br, d = _super_choi(bl, br, op.data)
+    ChoiState(ChoiRefSysBasis(bl[1])⊗ChoiOutSysBasis(bl[2]),
+              ChoiRefSysBasis(br[1])⊗ChoiOutSysBasis(br[2]), d)
+end
+
+function SuperOperator(op::ChoiState)
+    #SuperOperator(_super_choi(op.basis_l, op.basis_r, op.data)...)
+    bl = (op.basis_l[1].basis, op.basis_l[2].basis)
+    br = (op.basis_r[1].basis, op.basis_r[2].basis)
+    bl, br, d = _super_choi(bl, br, op.data)
+    SuperOperator(KetBraBasis(bl[1],bl[2]),
+                  KetBraBasis(br[1],br[2]), d)
+end
 
 *(a::ChoiState, b::SuperOperator) = SuperOperator(a)*b
 *(a::SuperOperator, b::ChoiState) = a*SuperOperator(b)

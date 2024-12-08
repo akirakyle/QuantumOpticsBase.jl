@@ -15,7 +15,7 @@ CZ_sop = SuperOperator(CZ)
 
 # Test conversion of unitary matrices to superoperators.
 @test diag(CZ_sop.data) ==  ComplexF64[1,1,1,-1,1,1,1,-1,1,1,1,-1,-1,-1,-1,1]
-@test CZ_sop.basis_l == CZ_sop.basis_r == (q2, q2)
+@test CZ_sop.basis_l == CZ_sop.basis_r == KetBraBasis(q2, q2)
 
 # Test conversion of superoperator to Pauli transfer matrix.
 CZ_ptm = PauliTransferMatrix(CZ_sop)

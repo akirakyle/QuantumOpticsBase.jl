@@ -212,7 +212,8 @@ end
 
 Convert a superoperator to its representation as a Chi matrix.
 """
-function ChiMatrix(sop::DenseSuperOpType{B, B, T}) where {B, T}
+#function ChiMatrix(sop::DenseSuperOpType{B, B, T}) where {B, T} # TODO: add appropriate basis checke
+function ChiMatrix(sop::DenseSuperOpType{T}) where {T}
     num_qubits = length(sop.basis_l)
     sop_dim = 4 ^ num_qubits
     po = pauli_operators(num_qubits)
