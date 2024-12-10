@@ -187,6 +187,8 @@ where ``\\sqrt{ρ}=\\sum_n\\sqrt{λ_n}|ψ⟩⟨ψ|``.
 """
 fidelity(rho::DenseOpType{B,B}, sigma::DenseOpType{B,B}) where {B} = tr(sqrt(sqrt(rho.data)*sigma.data*sqrt(rho.data)))
 
+# TODO: document
+fidelity(a::Bra, b::Ket) = abs2(a*b)
 
 """
     ptranspose(rho, indices)
