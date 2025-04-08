@@ -1,5 +1,7 @@
 module QuantumOpticsBase
 
+using Moshi.Data: @data, variant_type, variant_name
+using Moshi.Match: @match
 using SparseArrays, LinearAlgebra, LRUCache, Strided, UnsafeArrays, FillArrays
 import LinearAlgebra: mul!, rmul!
 import RecursiveArrayTools
@@ -78,6 +80,7 @@ export Basis, GenericBasis, CompositeBasis, basis, basis_l, basis_r,
         #apply
                 apply!
 
+include("types.jl")
 include("states.jl")
 include("operators.jl")
 include("operators_dense.jl")
